@@ -1,0 +1,90 @@
+{
+  "app": {
+    "title": "AlbionOS",
+    "tagline": "Ngwa Njikwa Ọgwụ Ụlọ Ọrụ"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "products": "Ngwaahịa",
+    "inventory": "Ngwongwo",
+    "customers": "Ndị Ahịa",
+    "invoices": "Akwụụkwọ Ụgwọ",
+    "payments": "Ịkwụ Ụgwọ",
+    "reports": "Akwụkọ",
+    "staff": "Ndị Ọrụ",
+    "chat": "Nkata"
+  },
+  "common": {
+    "loading": "Na-ebu...",
+    "error": "Njehie",
+    "success": "Ọganihu",
+    "save": "Chekwa",
+    "cancel": "Kagbuo",
+    "delete": "Hichapụ",
+    "edit": "Dezie",
+    "create": "Mepụta",
+    "search": "Chọọ",
+    "filter": "Nyochaa",
+    "noData": "Enweghị data",
+    "confirm": "Kwenye",
+    "back": "Laghachi",
+    "actions": "Omume"
+  },
+  "auth": {
+    "signIn": "Banye",
+    "signOut": "Pụọ",
+    "signUp": "Mepụta Akaụntụ",
+    "forgotPassword": "Chefuru okwuntughe?",
+    "email": "Adreesị Ozi-e",
+    "password": "Okwuntughe",
+    "fullName": "Aha Zuruoke",
+    "welcomeBack": "Nnọọ",
+    "signInSubtitle": "Banye na akaụntụ AlbionOS gị",
+    "quickLogin": "Banye Ngwa Ngwa (Demo)"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalRevenue": "Mgbakọta Ego Enwetara",
+    "activeCustomers": "Ndị Ahịa Na-arụ Ọrụ",
+    "pendingPayments": "Ịkwụ Ụgwọ Na-echere",
+    "expiringStock": "Ngwongwo Na-akubịa Ọgwụgwụ"
+  },
+  "staff": {
+    "title": "Njikwa Ndị Ọrụ",
+    "addStaff": "Tinye Onye Ọrụ",
+    "editStaff": "Dezie Onye Ọrụ",
+    "suspend": "Kwụsịtụ",
+    "restore": "Weghachi",
+    "showDeleted": "Gosi E Hichapụrụ",
+    "email": "Ozi-e",
+    "fullName": "Aha Zuruoke",
+    "role": "Ọrụ",
+    "location": "Ebe",
+    "status": "Ọnọdụ",
+    "active": "Na-arụ Ọrụ",
+    "inactive": "Anaghị arụ Ọrụ"
+  },
+  "inventory": {
+    "title": "Ngwongwo",
+    "allocateStock": "Kenye Ngwongwo",
+    "stockTake": "Gụọ Ngwongwo",
+    "batch": "Ogwe",
+    "quantity": "Ọnụọgụ",
+    "expiryDate": "Ụbọchị Ọgwụgwụ",
+    "location": "Ebe",
+    "status": "Ọnọdụ"
+  },
+  "reports": {
+    "title": "Akwụkọ",
+    "generate": "Mepụta",
+    "view": "Lelee",
+    "dateRange": "Oge",
+    "allTime": "Oge niile",
+    "sales": "Akwụkọ Ahịa",
+    "inventory": "Akwụkọ Ngwongwo",
+    "financial": "Akwụkọ Ego",
+    "customer": "Akwụkọ Ndị Ahịa",
+    "repPerformance": "Ọrụ Ndị Nnọchite",
+    "expiry": "Akwụkọ Ọgwụgwụ"
+  }
+}

@@ -1,0 +1,293 @@
+'use client';
+
+import { useState, useEffect, useCallback, FormEvent } from 'react';
+import { useAuth } from '@/lib/auth-context';
+import Topbar from '@/components/layout/Topbar';
+import { useClinicPatients, useUsers } from '@/hooks/use-supabase-data';
+import type { Species } from '@/lib/types';
+import styles from './patients.module.css';
+
+const SPECIES_OPTIONS: Species[] = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Fish', 'Reptile', 'Horse', 'Goat', 'Sheep', 'Cattle', 'Poultry', 'Other'];
+
+const initialForm = {
+  name: '',
+  species: 'Dog' as Species,
+  breed: '',
+  gender: 'Male' as 'Male' | 'Female',
+  date_of_birth: '',
+  weight_kg: '',
+  color: '',
+  owner_id: '',
+};
+
+export default function PatientsPage() {
+  const { user } = useAuth();
+  const { patients, loading, refetch } = useClinicPatients();
+  const { users } = useUsers();
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ ...initialForm });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (showModal && users.length > 0 && !form.owner_id) {
+      setForm((prev) => ({ ...prev, owner_id: users[0].id }));
+    }
+  }, [showModal, users, form.owner_id]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      setSaving(true);
+      try {
+        const supabase = (await import('@/lib/supabase/client')).createClient();
+        const { error } = await supabase.from('patients').insert({
+          owner_id: form.owner_id,
+          name: form.name.trim(),
+          species: form.species,
+          breed: form.breed || null,
+          gender: form.gender,
+          date_of_birth: form.date_of_birth || null,
+          weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
+          color: form.color || null,
+          is_active: true,
+        });
+        if (error) {
+          const { addPatient } = await import('@/lib/data-service');
+          await addPatient({
+            owner_id: form.owner_id,
+            name: form.name.trim(),
+            species: form.species,
+            breed: form.breed,
+            gender: form.gender,
+            date_of_birth: form.date_of_birth || undefined,
+            weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : undefined,
+            color: form.color,
+          });
+        }
+        await refetch();
+        setShowModal(false);
+        setForm({ ...initialForm });
+      } finally {
+        setSaving(false);
+      }
+    },
+    [form, refetch],
+  );
+
+  if (!user) return null;
+
+  return (
+    <>
+      <Topbar title="Patients" />
+      <div className={styles.page}>
+        <div className={styles.header}>
+          <div>
+            <h1 className={styles.headerTitle}>Patients</h1>
+            <p className={styles.subtitle}>Manage registered pets</p>
+          </div>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+            + Register Patient
+          </button>
+        </div>
+
+        <div className="table-container">
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.tableHeader}>Name</th>
+                <th className={styles.tableHeader}>Species</th>
+                <th className={styles.tableHeader}>Breed</th>
+                <th className={styles.tableHeader}>Gender</th>
+                <th className={styles.tableHeader}>Owner</th>
+                <th className={styles.tableHeader}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td className={styles.tableCell} colSpan={6}>
+                    <div className={styles.loading}>Loading patients...</div>
+                  </td>
+                </tr>
+              ) : patients.length === 0 ? (
+                <tr>
+                  <td className={styles.tableCell} colSpan={6}>
+                    <div className={styles.loading}>No patients registered yet.</div>
+                  </td>
+                </tr>
+              ) : (
+                patients.map((p: any) => (
+                  <tr key={p.id} className={styles.tableRow}>
+                    <td className={styles.tableCell}>{p.name}</td>
+                    <td className={styles.tableCell}>{p.species}</td>
+                    <td className={styles.tableCell}>{p.breed || '—'}</td>
+                    <td className={styles.tableCell}>{p.gender}</td>
+                    <td className={styles.tableCell}>
+                      {p.owner?.full_name || p.owner?.name || '—'}
+                    </td>
+                    <td className={styles.tableCell}>
+                      <span
+                        className={`${styles.badge} ${
+                          p.is_active !== false
+                            ? styles.badgeActive
+                            : styles.badgeInactive
+                        }`}
+                      >
+                        {p.is_active !== false ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {showModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowModal(false)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>Register Patient</h2>
+              <button
+                className={styles.modalClose}
+                onClick={() => setShowModal(false)}
+                type="button"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleSubmit}>
+              <div className={styles.modalContent}>
+                <div className={styles.form}>
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Name</label>
+                    <input
+                      className={styles.formInput}
+                      name="name"
+                      value={form.name}
+                      onChange={handleChange}
+                      placeholder="Pet name"
+                      required
+                    />
+                  </div>
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Species</label>
+                      <select
+                        className={styles.formSelect}
+                        name="species"
+                        value={form.species}
+                        onChange={handleChange}
+                      >
+                        {SPECIES_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Breed</label>
+                      <input
+                        className={styles.formInput}
+                        name="breed"
+                        value={form.breed}
+                        onChange={handleChange}
+                        placeholder="e.g. Golden Retriever"
+                      />
+                    </div>
+                  </div>
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Gender</label>
+                      <select
+                        className={styles.formSelect}
+                        name="gender"
+                        value={form.gender}
+                        onChange={handleChange}
+                      >
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                      </select>
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Date of Birth</label>
+                      <input
+                        className={styles.formInput}
+                        type="date"
+                        name="date_of_birth"
+                        value={form.date_of_birth}
+                        onChange={handleChange}
+                      />
+                    </div>
+                  </div>
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Weight (kg)</label>
+                      <input
+                        className={styles.formInput}
+                        type="number"
+                        step="0.1"
+                        name="weight_kg"
+                        value={form.weight_kg}
+                        onChange={handleChange}
+                        placeholder="e.g. 12.5"
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Color</label>
+                      <input
+                        className={styles.formInput}
+                        name="color"
+                        value={form.color}
+                        onChange={handleChange}
+                        placeholder="e.g. Brown & White"
+                      />
+                    </div>
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Owner</label>
+                    <select
+                      className={styles.formSelect}
+                      name="owner_id"
+                      value={form.owner_id}
+                      onChange={handleChange}
+                      required
+                    >
+                      <option value="">Select an owner</option>
+                      {users.map((u: any) => (
+                        <option key={u.id} value={u.id}>
+                          {u.full_name || u.email}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className={styles.modalFooter}>
+                <button
+                  type="button"
+                  className={styles.cancelBtn}
+                  onClick={() => setShowModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={styles.submitBtn}
+                  disabled={saving || !form.name.trim() || !form.owner_id}
+                >
+                  {saving ? 'Saving...' : 'Register'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

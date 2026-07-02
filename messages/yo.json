@@ -1,0 +1,90 @@
+{
+  "app": {
+    "title": "AlbionOS",
+    "tagline": "Eto Isakoso Oogun ti Ile-iṣẹ"
+  },
+  "nav": {
+    "dashboard": "Dashibodu",
+    "products": "Awọn Ọja",
+    "inventory": "Ọja",
+    "customers": "Awọn Onibara",
+    "invoices": "Awọn Iwe-ẹri",
+    "payments": "Isanwo",
+    "reports": "Awọn Ijabọ",
+    "staff": "Oṣiṣẹ",
+    "chat": "Ifọrọwerọ"
+  },
+  "common": {
+    "loading": "Ṣe ikojọpọ...",
+    "error": "Aṣiṣe",
+    "success": "Aṣeyọri",
+    "save": "Fipamọ",
+    "cancel": "Fagilee",
+    "delete": "Pa",
+    "edit": "Ṣatunkọ",
+    "create": "Ṣẹda",
+    "search": "Ṣewadi",
+    "filter": "Ajọ",
+    "noData": "Ko si data",
+    "confirm": "Jẹrisi",
+    "back": "Pada",
+    "actions": "Awọn Igbese"
+  },
+  "auth": {
+    "signIn": "Wọle",
+    "signOut": "Jade",
+    "signUp": "Ṣẹda Akọọlẹ",
+    "forgotPassword": "Gbagbe ọrọ igbaniwọle?",
+    "email": "Adirẹsi Imeeli",
+    "password": "Ọrọ igbaniwọle",
+    "fullName": "Orukọ Kikun",
+    "welcomeBack": "Kaabo",
+    "signInSubtitle": "Wọle si akọọlẹ AlbionOS rẹ",
+    "quickLogin": "Wọle Ni Kiakia (Demo)"
+  },
+  "dashboard": {
+    "title": "Dashibodu",
+    "totalRevenue": "Lapapọ Owo Ti n Wọle",
+    "activeCustomers": "Awọn Onibara Ti Nṣiṣẹ",
+    "pendingPayments": "Awọn Isanwo Ti Nduro",
+    "expiringStock": "Ọja Ti Nlo"
+  },
+  "staff": {
+    "title": "Isakoso Oṣiṣẹ",
+    "addStaff": "Fi Oṣiṣẹ Kun",
+    "editStaff": "Ṣatunkọ Oṣiṣẹ",
+    "suspend": "Duro",
+    "restore": "Mu Pada",
+    "showDeleted": "Fi Awọn Ti Paa Han",
+    "email": "Imeeli",
+    "fullName": "Orukọ Kikun",
+    "role": "Ipa",
+    "location": "Ipo",
+    "status": "Ipo",
+    "active": "Ti Nṣiṣẹ",
+    "inactive": "Ko Siṣẹ"
+  },
+  "inventory": {
+    "title": "Ọja",
+    "allocateStock": "Pin Ọja",
+    "stockTake": "Ka Ọja",
+    "batch": "Ẹgbẹ",
+    "quantity": "Opo",
+    "expiryDate": "Ọjọ Ipari",
+    "location": "Ipo",
+    "status": "Ipo"
+  },
+  "reports": {
+    "title": "Awọn Ijabọ",
+    "generate": "Ṣẹda",
+    "view": "Wo",
+    "dateRange": "Igbala Ọjọ",
+    "allTime": "Gbogbo igba",
+    "sales": "Ijabọ Tita",
+    "inventory": "Ijabọ Ọja",
+    "financial": "Ijabọ Isuna",
+    "customer": "Ijabọ Onibara",
+    "repPerformance": "Iṣẹ Aṣoju",
+    "expiry": "Ijabọ Ipari"
+  }
+}

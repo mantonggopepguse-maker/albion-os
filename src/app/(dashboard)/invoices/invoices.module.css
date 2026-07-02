@@ -1,0 +1,480 @@
+/**
+ * @file invoices.module.css — Styles for the Invoices page
+ *
+ * Includes table, status filter tabs, form layout, line items grid,
+ * and totals section with neomorphic/glassmorphic design.
+ */
+
+/* ── Page container ── */
+.page {
+  padding: var(--space-6);
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Toolbar: search + button ── */
+.toolbar {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.searchInput {
+  flex: 1;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-lg);
+  font-size: 0.9rem;
+  background: var(--color-white);
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--color-gold, #C5A55A);
+  box-shadow: 0 0 0 3px rgba(197, 165, 90, 0.15);
+}
+
+.addBtn {
+  padding: var(--space-3) var(--space-5);
+  background: linear-gradient(135deg, var(--color-navy), var(--color-ocean));
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.addBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(9, 57, 97, 0.3);
+}
+
+/* ── Status filter tabs ── */
+.tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.tab {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-white);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-lg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  transition: all 0.2s ease;
+  color: var(--color-slate);
+  box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.tab:hover {
+  background: rgba(9, 57, 97, 0.04);
+}
+
+.tabActive {
+  background: var(--color-navy);
+  color: white;
+  border-color: var(--color-navy);
+}
+
+.tabCount {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.tabActive .tabCount {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Summary cards ── */
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.summaryCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-white);
+  border-radius: var(--radius-lg);
+  box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.04), -2px -2px 6px rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.summaryIcon {
+  font-size: 1.5rem;
+}
+
+.summaryLabel {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-gray);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.summaryValue {
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-navy);
+  margin-top: 2px;
+}
+
+/* ── Table ── */
+.tableWrap {
+  background: var(--color-white);
+  border-radius: var(--radius-lg);
+  box-shadow: 3px 3px 10px rgba(0, 0, 0, 0.04), -2px -2px 6px rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table thead th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-gray);
+  background: rgba(9, 57, 97, 0.02);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.table tbody td {
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.9rem;
+  color: var(--color-slate);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.row {
+  transition: background 0.15s ease;
+}
+
+.row:hover {
+  background: rgba(9, 57, 97, 0.02);
+}
+
+.invoiceNum {
+  font-weight: 600;
+  color: var(--color-navy);
+  font-family: monospace;
+}
+
+.amount {
+  text-align: right;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.tableFooter {
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.8rem;
+  color: var(--color-gray);
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+/* ── Status badges ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.badgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.badgePaid { background: rgba(34, 197, 94, 0.1); color: #16a34a; }
+.badgePaid .badgeDot { background: #22c55e; }
+
+.badgePartial { background: rgba(59, 130, 246, 0.1); color: #2563eb; }
+.badgePartial .badgeDot { background: #3b82f6; }
+
+.badgeSent { background: rgba(245, 158, 11, 0.1); color: #d97706; }
+.badgeSent .badgeDot { background: #f59e0b; }
+
+.badgeOverdue { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
+.badgeOverdue .badgeDot { background: #ef4444; }
+
+.badgeDraft { background: rgba(107, 114, 128, 0.1); color: #6b7280; }
+.badgeDraft .badgeDot { background: #9ca3af; }
+
+/* ── Empty state ── */
+.emptyState {
+  text-align: center;
+  padding: var(--space-8) !important;
+  color: var(--color-gray);
+}
+
+.emptyState span { font-size: 2rem; display: block; margin-bottom: var(--space-2); }
+
+/* ── Form styles ── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.formLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-slate);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.formInput {
+  padding: var(--space-3);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  background: var(--color-white);
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.formInput:focus {
+  outline: none;
+  border-color: var(--color-gold, #C5A55A);
+  box-shadow: 0 0 0 3px rgba(197, 165, 90, 0.15);
+}
+
+.formSelect {
+  padding: var(--space-3);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  background: var(--color-white);
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M6 8L1 3h10z' fill='%23324553'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.formSelect:focus {
+  outline: none;
+  border-color: var(--color-gold, #C5A55A);
+  box-shadow: 0 0 0 3px rgba(197, 165, 90, 0.15);
+}
+
+/* ── Line items section ── */
+.lineSection {
+  background: rgba(9, 57, 97, 0.02);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.lineSectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.lineSectionHeader h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-navy);
+}
+
+.addLineBtn {
+  padding: var(--space-2) var(--space-3);
+  background: rgba(9, 57, 97, 0.08);
+  border: 1px dashed rgba(9, 57, 97, 0.2);
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-ocean);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.addLineBtn:hover {
+  background: rgba(9, 57, 97, 0.12);
+}
+
+.lineHeader {
+  display: grid;
+  grid-template-columns: 3fr 1fr 1.2fr 1.2fr 40px;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-gray);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.lineRow {
+  display: grid;
+  grid-template-columns: 3fr 1fr 1.2fr 1.2fr 40px;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.linePrice, .lineTotal {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-slate);
+  font-family: monospace;
+}
+
+.lineTotal {
+  color: var(--color-navy);
+}
+
+.removeLineBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.08);
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  transition: all 0.15s ease;
+}
+
+.removeLineBtn:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* ── Totals section ── */
+.totalsSection {
+  background: rgba(197, 165, 90, 0.06);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  border: 1px solid rgba(197, 165, 90, 0.15);
+}
+
+.totalRow {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  font-size: 0.9rem;
+  color: var(--color-slate);
+}
+
+.grandTotal {
+  border-top: 2px solid rgba(9, 57, 97, 0.1);
+  padding-top: var(--space-3);
+  margin-top: var(--space-2);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-navy);
+}
+
+/* ── Form actions ── */
+.formActions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  padding: var(--space-3) var(--space-5);
+  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-lg);
+  font-size: 0.9rem;
+  color: var(--color-slate);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cancelBtn:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.submitBtn {
+  padding: var(--space-3) var(--space-6);
+  background: linear-gradient(135deg, var(--color-navy), var(--color-ocean));
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.submitBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(9, 57, 97, 0.3);
+}
+
+.submitBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .toolbar { flex-direction: column; }
+  .addBtn { width: 100%; }
+  .formRow { grid-template-columns: 1fr; }
+  .lineHeader, .lineRow { grid-template-columns: 2fr 1fr 1fr 1fr 30px; font-size: 0.75rem; }
+  .formActions { flex-direction: column; }
+  .cancelBtn, .submitBtn { width: 100%; }
+  .summaryGrid { grid-template-columns: 1fr 1fr; }
+}

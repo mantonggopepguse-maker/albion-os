@@ -1,0 +1,245 @@
+.page {
+  padding: var(--space-6);
+  animation: fadeIn 0.4s ease-out;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+
+.heading {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-navy);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.subheading {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.processBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-white);
+  background-color: var(--color-navy);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  white-space: nowrap;
+}
+
+.processBtn:hover {
+  background-color: var(--color-ocean);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Stats ── */
+.statsBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-white);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-5);
+  animation: fadeInUp 0.5s ease-out both;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.statValue {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-navy);
+}
+
+.statLabel {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.statDivider {
+  width: 1px;
+  height: 40px;
+  background: var(--color-border);
+}
+
+/* ── Table ── */
+.tableContainer {
+  background: var(--color-white);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  animation: fadeInUp 0.5s ease-out both;
+  animation-delay: 0.1s;
+}
+
+.table {
+  width: 100%;
+  font-size: var(--text-sm);
+  border-collapse: collapse;
+}
+
+.table th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: middle;
+}
+
+.row {
+  transition: background-color var(--transition-fast);
+  animation: fadeInUp 0.4s ease-out both;
+}
+
+.row:hover {
+  background-color: rgba(9, 57, 97, 0.02);
+}
+
+.row:last-child td {
+  border-bottom: none;
+}
+
+.periodText {
+  font-weight: var(--weight-semibold);
+  color: var(--color-slate);
+  font-size: var(--text-sm);
+}
+
+.empCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg);
+  font-weight: var(--weight-bold);
+  color: var(--color-navy);
+  font-size: var(--text-sm);
+}
+
+.netPayCol {
+  font-weight: var(--weight-bold);
+  color: var(--color-navy);
+}
+
+/* ── Status Badges ── */
+.statusBadge {
+  display: inline-flex;
+  padding: 3px var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  border-radius: var(--radius-full);
+}
+
+.statusCompleted { background: var(--color-success-light); color: #15803d; }
+.statusProcessing { background: var(--color-info-light); color: #1d4ed8; }
+.statusDraft { background: var(--color-bg); color: var(--color-text-muted); }
+.statusCancelled { background: var(--color-danger-light); color: #dc2626; }
+
+/* ── View Button ── */
+.viewBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-ocean);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.viewBtn:hover {
+  background: rgba(30, 79, 119, 0.06);
+  border-color: var(--color-ocean);
+  color: var(--color-navy);
+}
+
+/* ── Payslip Modal Table ── */
+.payslipTable {
+  width: 100%;
+  font-size: var(--text-sm);
+  border-collapse: collapse;
+}
+
+.payslipTable th {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+
+.payslipTable td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: middle;
+}
+
+/* ── Animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 1024px) {
+  .tableContainer { overflow-x: auto; }
+  .table { min-width: 800px; }
+}
+
+@media (max-width: 640px) {
+  .page { padding: var(--space-4); }
+  .header { flex-direction: column; gap: var(--space-3); }
+  .statsBar { flex-wrap: wrap; gap: var(--space-3); }
+  .statDivider { display: none; }
+}

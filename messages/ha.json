@@ -1,0 +1,90 @@
+{
+  "app": {
+    "title": "AlbionOS",
+    "tagline": "Manhajin Gudanar da Magunguna na Kasuwanci"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "products": "Kayayyaki",
+    "inventory": "Kaya",
+    "customers": "Abokan Ciniki",
+    "invoices": "Daftari",
+    "payments": "Biyan Kuɗi",
+    "reports": "Rahotanni",
+    "staff": "Ma'aikata",
+    "chat": "Taɗi"
+  },
+  "common": {
+    "loading": "Ana ɗauka...",
+    "error": "Kuskure",
+    "success": "Nasara",
+    "save": "Ajiye",
+    "cancel": "Soke",
+    "delete": "Share",
+    "edit": "Gyara",
+    "create": "Ƙirƙiri",
+    "search": "Bincike",
+    "filter": "Tace",
+    "noData": "Babu bayanai",
+    "confirm": "Tabbatar",
+    "back": "Geri",
+    "actions": "Ayyuka"
+  },
+  "auth": {
+    "signIn": "Shiga",
+    "signOut": "Fita",
+    "signUp": "Ƙirƙiri Asusu",
+    "forgotPassword": "Ka manta kalmar sirri?",
+    "email": "Adireshin Imel",
+    "password": "Kalmar Sirri",
+    "fullName": "Cikakken Suna",
+    "welcomeBack": "Barka da Dawowa",
+    "signInSubtitle": "Shiga asusunka na AlbionOS",
+    "quickLogin": "Shiga Cikin Sauri (Demo)"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalRevenue": "Jimlar Kuɗin Shiga",
+    "activeCustomers": "Abokan Ciniki Masu Aiki",
+    "pendingPayments": "Biyan Kuɗi Masu Jiran",
+    "expiringStock": "Kaya Masu Ƙarewa"
+  },
+  "staff": {
+    "title": "Gudanar da Ma'aikata",
+    "addStaff": "Ƙara Ma'aikaci",
+    "editStaff": "Gyara Ma'aikaci",
+    "suspend": "Dakatar",
+    "restore": "Maido",
+    "showDeleted": "Nuna Share",
+    "email": "Imel",
+    "fullName": "Cikakken Suna",
+    "role": "Matsayi",
+    "location": "Wuri",
+    "status": "Hali",
+    "active": "Aiki",
+    "inactive": "Ba Aiki"
+  },
+  "inventory": {
+    "title": "Kaya",
+    "allocateStock": "Rarraba Kaya",
+    "stockTake": "Ƙididdigar Kaya",
+    "batch": "Kuri",
+    "quantity": "Adadi",
+    "expiryDate": "Kwanan Ƙarewa",
+    "location": "Wuri",
+    "status": "Hali"
+  },
+  "reports": {
+    "title": "Rahotanni",
+    "generate": "Ƙirƙiri",
+    "view": "Duba",
+    "dateRange": "Kewayon Kwanaki",
+    "allTime": "Duk lokaci",
+    "sales": "Rahoton Tallace-tallace",
+    "inventory": "Rahoton Kaya",
+    "financial": "Rahoton Kuɗi",
+    "customer": "Rahoton Abokin Ciniki",
+    "repPerformance": "Ayyukan Wakili",
+    "expiry": "Rahoton Ƙarewa"
+  }
+}

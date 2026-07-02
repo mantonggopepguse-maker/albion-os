@@ -1,0 +1,66 @@
+/**
+ * @file Toast.module.css — Styles for the Toast notification component
+ */
+
+.toast {
+  position: fixed;
+  top: var(--space-6, 24px);
+  right: var(--space-6, 24px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px) var(--space-5, 20px);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--color-white, #fff);
+  box-shadow: 0 8px 32px rgba(9, 57, 97, 0.15), 0 2px 8px rgba(0, 0, 0, 0.06);
+  min-width: 300px;
+  max-width: 420px;
+  animation: slideInRight 0.3s ease-out;
+  border-left: 4px solid transparent;
+}
+
+/* ── Type-specific left border colours ── */
+.success { border-left-color: #22c55e; }
+.error { border-left-color: #ef4444; }
+.info { border-left-color: #3b82f6; }
+
+.icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.message {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--color-slate, #324553);
+  line-height: 1.4;
+}
+
+.close {
+  background: none;
+  border: none;
+  color: var(--color-gray, #a2a3a2);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm, 4px);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.close:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--color-navy, #093961);
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

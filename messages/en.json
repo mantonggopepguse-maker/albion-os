@@ -1,0 +1,90 @@
+{
+  "app": {
+    "title": "AlbionOS",
+    "tagline": "Enterprise Pharmaceutical Management Suite"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "products": "Products",
+    "inventory": "Inventory",
+    "customers": "Customers",
+    "invoices": "Invoices",
+    "payments": "Payments",
+    "reports": "Reports",
+    "staff": "Staff",
+    "chat": "Chat"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "noData": "No data available",
+    "confirm": "Confirm",
+    "back": "Back",
+    "actions": "Actions"
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "signUp": "Create Account",
+    "forgotPassword": "Forgot password?",
+    "email": "Email Address",
+    "password": "Password",
+    "fullName": "Full Name",
+    "welcomeBack": "Welcome Back",
+    "signInSubtitle": "Sign in to your AlbionOS account",
+    "quickLogin": "Quick Login (Demo)"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalRevenue": "Total Revenue",
+    "activeCustomers": "Active Customers",
+    "pendingPayments": "Pending Payments",
+    "expiringStock": "Expiring Stock"
+  },
+  "staff": {
+    "title": "Staff Management",
+    "addStaff": "Add Staff",
+    "editStaff": "Edit Staff",
+    "suspend": "Suspend",
+    "restore": "Restore",
+    "showDeleted": "Show Deleted",
+    "email": "Email",
+    "fullName": "Full Name",
+    "role": "Role",
+    "location": "Location",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "inventory": {
+    "title": "Inventory",
+    "allocateStock": "Allocate Stock",
+    "stockTake": "Stock Take",
+    "batch": "Batch",
+    "quantity": "Quantity",
+    "expiryDate": "Expiry Date",
+    "location": "Location",
+    "status": "Status"
+  },
+  "reports": {
+    "title": "Reports",
+    "generate": "Generate",
+    "view": "View",
+    "dateRange": "Date Range",
+    "allTime": "All time",
+    "sales": "Sales Report",
+    "inventory": "Inventory Report",
+    "financial": "Financial Report",
+    "customer": "Customer Report",
+    "repPerformance": "Rep Performance",
+    "expiry": "Expiry Report"
+  }
+}

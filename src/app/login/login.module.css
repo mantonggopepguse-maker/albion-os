@@ -1,0 +1,343 @@
+.container {
+  display: flex;
+  min-height: 100vh;
+  background: var(--color-surface);
+}
+
+/* ─── Brand Panel (Left) ─── */
+.brandPanel {
+  flex: 1;
+  background: linear-gradient(135deg, var(--color-navy) 0%, var(--color-ocean) 50%, var(--color-slate) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  padding: var(--space-8);
+}
+
+.brandContent {
+  position: relative;
+  z-index: 2;
+  color: #fff;
+  max-width: 440px;
+}
+
+.brandLogo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.logoMark {
+  width: 64px;
+  height: 64px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 800;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.brandTitle {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+.brandTagline {
+  font-size: var(--font-size-lg);
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.6;
+  margin-bottom: var(--space-8);
+}
+
+.brandFeatures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-10);
+}
+
+.feature {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: rgba(255, 255, 255, 0.85);
+  padding: var(--space-2) 0;
+}
+
+.featureIcon {
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+}
+
+.brandFooter {
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  padding-top: var(--space-4);
+}
+
+.brandFooter p {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.8;
+}
+
+/* Decorative circles */
+.circle1, .circle2, .circle3 {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.circle1 {
+  width: 500px;
+  height: 500px;
+  top: -150px;
+  right: -100px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.circle2 {
+  width: 300px;
+  height: 300px;
+  bottom: -50px;
+  left: -50px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.circle3 {
+  width: 180px;
+  height: 180px;
+  top: 40%;
+  right: 10%;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* ─── Form Panel (Right) ─── */
+.formPanel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background: #fff;
+}
+
+.formContainer {
+  width: 100%;
+  max-width: 420px;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.formHeader {
+  margin-bottom: var(--space-8);
+}
+
+.formTitle {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-navy);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.formSubtitle {
+  font-size: var(--font-size-sm);
+  color: var(--color-gray);
+  margin: 0;
+}
+
+/* Error Alert */
+.errorAlert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-danger-tint);
+  color: var(--color-danger);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-4);
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Form */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-slate);
+}
+
+.input {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xl);
+  font-size: var(--font-size-base);
+  font-family: inherit;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-clay-sunken);
+  transition: all var(--transition-fast);
+  outline: none;
+}
+
+.input:focus {
+  background: #fff;
+  box-shadow: var(--shadow-clay-sunken), 0 0 0 2px rgba(223, 186, 107, 0.4);
+}
+
+.input::placeholder {
+  color: var(--color-gray);
+}
+
+.submitBtn {
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-navy);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-clay-btn);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--space-2);
+}
+
+.submitBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--color-ocean);
+  box-shadow: var(--shadow-clay-pop);
+}
+
+.submitBtn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--shadow-clay-btn-active);
+}
+
+.submitBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* ─── Quick Login (Demo) ─── */
+.quickLogin {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border);
+}
+
+.quickLoginTitle {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-gray);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 var(--space-3) 0;
+}
+
+.quickLoginGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.quickLoginBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: none;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-clay-btn);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+}
+
+.quickLoginBtn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-clay-pop);
+}
+
+.quickLoginBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quickLoginName {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-slate);
+}
+
+.quickLoginRole {
+  font-size: 11px;
+  color: var(--color-gray);
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+  }
+
+  .brandPanel {
+    padding: var(--space-6);
+    min-height: auto;
+  }
+
+  .brandFeatures {
+    display: none;
+  }
+
+  .brandFooter {
+    display: none;
+  }
+
+  .formPanel {
+    padding: var(--space-6);
+  }
+}

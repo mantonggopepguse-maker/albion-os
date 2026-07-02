@@ -1,0 +1,614 @@
+.page {
+  padding: var(--space-6);
+  animation: fadeIn 0.4s ease-out;
+  background-color: var(--color-bg); /* Soft light-blue-grey background is crucial for neomorphic dual-shadow contrast */
+}
+
+/* Greeting Block */
+.greeting {
+  margin-bottom: var(--space-6);
+}
+
+.greetingText {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-navy);
+  margin: 0 0 var(--space-1) 0;
+  background: linear-gradient(135deg, var(--color-navy) 0%, var(--color-gold-dark) 100%); /* Elegant gold-navy text gradient */
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.greetingSub {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* Stats Grid layout */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-5); /* Slightly larger gap to give neomorphic items room to breathe */
+  margin-bottom: var(--space-8);
+}
+
+/* StatCard: Claymorphic soft card */
+.statCard {
+  background: var(--color-surface);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-clay-card);
+  transition: all var(--transition-base);
+  animation: fadeInUp 0.5s ease-out;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtlest gold accent indicator line at the top of StatCards for premium feel */
+.statCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+  opacity: 0.7;
+}
+
+.statCard:hover {
+  transform: translateY(-3px); /* Smooth hover lift */
+  background: var(--color-surface-hover);
+  box-shadow: var(--shadow-clay-pop);
+}
+
+.statTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.statInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.statLabel {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.75px;
+}
+
+.statValue {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-navy);
+}
+
+/* Icon container inside StatCards: Puffy clay button look */
+.statIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-clay-btn);
+  flex-shrink: 0;
+  color: var(--color-ocean);
+}
+
+.statTrend {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid rgba(255, 255, 255, 0.4); /* Translucent separator line */
+}
+
+.trendUp {
+  font-size: var(--font-size-xs);
+  color: #16a34a; /* Slightly stronger green for soft contrast */
+  font-weight: 600;
+}
+
+.trendDown {
+  font-size: var(--font-size-xs);
+  color: #dc2626; /* Slightly stronger red for contrast */
+  font-weight: 600;
+}
+
+/* Content Grid Layout */
+.contentGrid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: var(--space-6);
+}
+
+/* Main Dashboard Cards (Activity Feed, Stock lists etc.): Claymorphic */
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-clay-card);
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.cardTitle {
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--color-navy);
+  margin: 0 0 var(--space-4) 0;
+  position: relative;
+  display: inline-block;
+}
+
+/* Soft gold indicator dot on section headers */
+.cardTitle::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 24px;
+  height: 2px;
+  background-color: var(--color-gold);
+  border-radius: var(--radius-full);
+}
+
+/* Activity List */
+.activityList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3); /* Larger spacing for neomorphic layout */
+}
+
+/* ActivityItem: Styled as a puffy clay pill */
+.activityItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-clay-btn);
+  transition: all var(--transition-base);
+}
+
+.activityItem:hover {
+  transform: translateX(4px); /* Interactive sliding micro-animation */
+  box-shadow: var(--shadow-clay-btn-active);
+}
+
+/* ActivityIcon: Clay sunken style */
+.activityIcon {
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface); 
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-clay-sunken);
+  flex-shrink: 0;
+  color: var(--color-navy);
+}
+
+.activityContent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activityText {
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.activityTime {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+/* Expiry List */
+.expiryList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ExpiryItem: Framed as a soft clay panel */
+.expiryItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-clay-btn);
+  transition: all var(--transition-base);
+}
+
+.expiryItem:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-clay-pop);
+}
+
+.expiryName {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.expiryBatch {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.expiryBadge {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+}
+
+.danger {
+  background: var(--color-danger-light);
+  color: #c2410c;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.warning {
+  background: var(--color-warning-light);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.safe {
+  background: var(--color-success-light);
+  color: #15803d;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+/* Quick Actions Grid */
+.quickActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+/* ActionBtn: Fully neomorphic pressable tile */
+.actionBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4);
+  background: rgba(255, 255, 255, 0.45);
+  border: 1.5px solid rgba(255, 255, 255, 0.65);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-slate);
+  box-shadow: var(--shadow-neumorphic-button); /* Raised neomorphic state */
+}
+
+.actionBtn:hover {
+  border-color: var(--color-gold); /* Soft gold highlighting on hover */
+  background: var(--color-gold-light);
+  color: var(--color-gold-dark);
+  transform: translateY(-2px); /* Gentle hover lift */
+  box-shadow: var(--shadow-neumorphic-out-sm), 0 4px 12px rgba(223, 186, 107, 0.1);
+}
+
+.actionBtn:active {
+  transform: translateY(1px); /* Pushed state */
+  box-shadow: var(--shadow-neumorphic-in-sm); /* Sunken neomorphic state */
+}
+
+.actionIcon {
+  font-size: 28px;
+  transition: transform var(--transition-fast);
+}
+
+.actionBtn:hover .actionIcon {
+  transform: scale(1.1); /* Micro-interaction scale */
+}
+
+/* Invoice List */
+.invoiceList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* InvoiceItem: Floating glass cards */
+.invoiceItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: var(--shadow-neumorphic-out-sm);
+  transition: all var(--transition-base);
+}
+
+.invoiceItem:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-neumorphic-button);
+  background: rgba(255, 255, 255, 0.45);
+  border-color: rgba(223, 186, 107, 0.25);
+}
+
+.invoiceId {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-ocean);
+}
+
+.invoiceCustomer {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.invoiceRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.invoiceAmount {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-navy);
+}
+
+.invoiceStatus {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.25px;
+}
+
+.statusPaid {
+  background: var(--color-success-light);
+  color: #15803d;
+  border: 1px solid rgba(34, 197, 94, 0.15);
+}
+
+.statusPending {
+  background: var(--color-warning-light);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.15);
+}
+
+.statusOverdue {
+  background: var(--color-danger-light);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+/* Payment Queue */
+.paymentQueue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* PaymentItem: Neomorphic floating queue item */
+.paymentItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: var(--shadow-neumorphic-out-sm);
+  transition: all var(--transition-base);
+}
+
+.paymentItem:hover {
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: var(--shadow-neumorphic-button);
+}
+
+.paymentInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.paymentRep {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.paymentCustomer {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.paymentActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.paymentAmount {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-navy);
+}
+
+/* ApproveBtn: Soft Success Button with depth shadows */
+.approveBtn {
+  padding: var(--space-1) var(--space-4);
+  background: var(--color-success);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 2px 4px rgba(34, 197, 94, 0.25);
+  transition: all var(--transition-fast);
+}
+
+.approveBtn:hover {
+  background: #16a34a;
+  transform: scale(1.04);
+  box-shadow: 0 4px 8px rgba(22, 163, 74, 0.35);
+}
+
+.approveBtn:active {
+  transform: scale(0.98);
+}
+
+/* Rep Summary */
+.repSummary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* RepRow: Glass list item */
+.repRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: var(--shadow-neumorphic-out-sm);
+  flex-wrap: wrap;
+  transition: all var(--transition-base);
+}
+
+.repRow:hover {
+  background: rgba(255, 255, 255, 0.45);
+  border-color: rgba(223, 186, 107, 0.2);
+}
+
+.repName {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  min-width: 120px;
+}
+
+.repStat {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.repOutstanding {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: #dc2626;
+  margin-left: auto;
+}
+
+/* Stock Table */
+.stockTable {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.stockHeader {
+  display: grid;
+  grid-template-columns: 2.2fr 0.8fr 1fr 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.75px;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.4);
+}
+
+/* StockRow: Alternating frosted glass row highlight */
+.stockRow {
+  display: grid;
+  grid-template-columns: 2.2fr 0.8fr 1fr 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-sm);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.stockRow:hover {
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateX(2px);
+}
+
+.stockName {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.stockQty {
+  font-weight: 700;
+  color: var(--color-navy);
+}
+
+.stockBatch {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.stockExpiry {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* Responsive constraints */
+@media (max-width: 1024px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .page {
+    padding: var(--space-4);
+  }
+}

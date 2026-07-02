@@ -1,0 +1,149 @@
+.topbar {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-6);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: transparent;
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.title {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--color-navy);
+  margin: 0;
+  background: linear-gradient(135deg, var(--color-navy) 0%, var(--color-gold-dark) 150%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* IconBtn: Clay button */
+.iconBtn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--color-surface);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-size: 18px;
+  position: relative;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-clay-btn);
+  color: var(--color-slate);
+}
+
+.iconBtn:hover {
+  background: var(--color-surface-hover);
+  transform: translateY(-1px);
+  color: var(--color-navy);
+  box-shadow: var(--shadow-clay-pop);
+}
+
+.iconBtn:active {
+  transform: translateY(1px);
+  box-shadow: var(--shadow-clay-btn-active);
+}
+
+.notifDot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  background: var(--color-danger);
+  border-radius: var(--radius-full);
+  border: 2px solid #fff;
+  animation: pulse 2s infinite;
+}
+
+/* UserMenu: Clay pill container */
+.userMenu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  border: none;
+  box-shadow: var(--shadow-clay-btn);
+  transition: all var(--transition-fast);
+}
+
+.userMenu:hover {
+  box-shadow: var(--shadow-clay-pop);
+  transform: translateY(-1px);
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.userInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.userName {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-slate);
+}
+
+.userRole {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.logoutBtn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-size: 16px;
+  transition: all var(--transition-fast);
+  color: var(--color-danger);
+}
+
+.logoutBtn:hover {
+  background: var(--color-surface);
+  box-shadow: var(--shadow-clay-sunken);
+}
+
+@media (max-width: 768px) {
+  .userInfo {
+    display: none;
+  }
+}

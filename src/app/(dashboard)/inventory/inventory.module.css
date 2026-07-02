@@ -1,0 +1,349 @@
+/**
+ * @file inventory.module.css — Styles for the Inventory Management page
+ *
+ * Covers tab navigation, data table with expiry badges, status pills,
+ * allocate stock form, and responsive layout.
+ */
+
+.page {
+  padding: var(--space-6);
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Tab bar ── */
+.tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.tab {
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-surface);
+  border: none;
+  border-radius: var(--radius-xl);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--color-slate);
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-clay-btn);
+}
+
+.tab:hover {
+  background: var(--color-surface-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-clay-pop);
+}
+
+.tabActive {
+  background: var(--color-navy);
+  color: white;
+  box-shadow: var(--shadow-clay-btn-active);
+}
+
+/* ── Toolbar ── */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.tableTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-navy);
+  margin: 0;
+}
+
+.allocateBtn {
+  padding: var(--space-3) var(--space-5);
+  background: linear-gradient(135deg, var(--color-navy), var(--color-ocean));
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.allocateBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(9, 57, 97, 0.3);
+}
+
+/* ── Table ── */
+.tableWrap {
+  background: var(--color-surface);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-clay-card);
+  border: none;
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table thead th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-gray);
+  background: rgba(9, 57, 97, 0.02);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.table tbody td {
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.9rem;
+  color: var(--color-slate);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.row {
+  transition: background 0.15s ease;
+}
+
+.row:hover {
+  background: rgba(9, 57, 97, 0.02);
+}
+
+/* ── Product cell with name + SKU ── */
+.productCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.productName {
+  font-weight: 600;
+  color: var(--color-navy);
+}
+
+.productSku {
+  font-size: 0.75rem;
+  color: var(--color-gray);
+  font-family: monospace;
+}
+
+/* ── Batch, quantity, location cells ── */
+.batchCell {
+  font-family: monospace;
+  font-weight: 500;
+}
+
+.qtyCell {
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.qtyLow {
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.locationCell {
+  font-size: 0.85rem;
+}
+
+/* ── Expiry date cell ── */
+.expiryCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.expiryBadge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.expiryDanger { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
+.expiryWarning { background: rgba(245, 158, 11, 0.1); color: #d97706; }
+.expirySafe { background: rgba(34, 197, 94, 0.1); color: #16a34a; }
+.expiryExpired { background: rgba(107, 114, 128, 0.1); color: #6b7280; }
+
+/* ── Status badges ── */
+.statusBadge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.statusGreen { background: rgba(34, 197, 94, 0.1); color: #16a34a; }
+.statusYellow { background: rgba(245, 158, 11, 0.1); color: #d97706; }
+.statusRed { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
+
+/* ── Table footer ── */
+.tableFooter {
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.8rem;
+  color: var(--color-gray);
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+/* ── Empty state ── */
+.emptyState {
+  text-align: center;
+  padding: var(--space-8) !important;
+  color: var(--color-gray);
+}
+
+.emptyState span { font-size: 2rem; display: block; margin-bottom: var(--space-2); }
+
+/* ── Form styles ── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.formLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-slate);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.formInput {
+  padding: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xl);
+  font-size: 0.9rem;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-clay-sunken);
+  transition: all 0.2s ease;
+}
+
+.formInput:focus {
+  outline: none;
+  background: #fff;
+  box-shadow: var(--shadow-clay-sunken), 0 0 0 2px rgba(197, 165, 90, 0.4);
+}
+
+.formSelect {
+  padding: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xl);
+  font-size: 0.9rem;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-clay-sunken);
+  transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M6 8L1 3h10z' fill='%23324553'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.formSelect:focus {
+  outline: none;
+  background: #fff;
+  box-shadow: var(--shadow-clay-sunken), 0 0 0 2px rgba(197, 165, 90, 0.4);
+}
+
+.formSelect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Available quantity info box ── */
+.availableInfo {
+  padding: var(--space-3);
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--color-ocean);
+}
+
+.noBatch {
+  font-size: 0.85rem;
+  color: #d97706;
+  padding: var(--space-2);
+  margin: 0;
+}
+
+/* ── Form actions ── */
+.formActions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  padding-top: var(--space-2);
+}
+
+.cancelBtn {
+  padding: var(--space-3) var(--space-5);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  font-size: 0.9rem;
+  color: var(--color-slate);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cancelBtn:hover {
+  background: var(--color-surface);
+  box-shadow: var(--shadow-clay-sunken);
+}
+
+.submitBtn {
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-navy);
+  color: white;
+  border: none;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-clay-btn);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.submitBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--color-ocean);
+  box-shadow: var(--shadow-clay-pop);
+}
+
+.submitBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .tabs { flex-wrap: wrap; }
+  .toolbar { flex-direction: column; gap: var(--space-3); align-items: stretch; }
+  .allocateBtn { width: 100%; text-align: center; }
+  .formActions { flex-direction: column; }
+  .cancelBtn, .submitBtn { width: 100%; }
+}
