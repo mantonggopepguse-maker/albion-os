@@ -33,7 +33,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AuthProvider, useAuth, QUICK_LOGIN_USERS, DEV_PASSWORD } from '@/lib/auth-context';
+import { AuthProvider, useAuth, QUICK_LOGIN_USERS, DEV_PASSWORD, ENABLE_DEMO_LOGIN } from '@/lib/auth-context';
 import styles from './login.module.css';
 
 /* ────────────────────────────────────────────
@@ -103,8 +103,16 @@ function LoginForm() {
       <div className={styles.brandPanel}>
         <div className={styles.brandContent}>
           <div className={styles.brandLogo}>
-            <div className={styles.logoMark}>A</div>
-            <h1 className={styles.brandTitle}>AlbionOS</h1>
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-400 via-emerald-500 to-teal-700 p-0.5 shadow-xl shadow-teal-500/30 flex items-center justify-center flex-shrink-0">
+              <div className="w-full h-full rounded-[14px] bg-slate-950/20 backdrop-blur-md flex items-center justify-center overflow-hidden">
+                <svg className="w-7 h-7 text-white drop-shadow-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="10" width="18" height="9" rx="4.5" transform="rotate(-30 12 14.5)" fill="currentColor" fillOpacity="0.25" />
+                  <path d="M12 5v14M5 12h14" strokeWidth="2.5" />
+                  <path d="M17 7c-2 0-4 1.5-4 4.5" stroke="currentColor" strokeWidth="2" opacity="0.85" />
+                </svg>
+              </div>
+            </div>
+            <h1 className={styles.brandTitle}>Albion OS</h1>
           </div>
           <p className={styles.brandTagline}>
             Enterprise Pharmaceutical Management Suite
@@ -216,49 +224,44 @@ function LoginForm() {
               </Link>
             </div>
 
-            <div style={{ textAlign: 'center', marginTop: 'var(--space-2)' }}>
-              <Link
-                href="/signup"
-                style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-navy)', fontWeight: 600 }}
-              >
-                Create an account
-              </Link>
-            </div>
+
           </form>
 
           {/* ── Quick Login Section ──
                Demo account buttons for development. Each button auto-fills
                the corresponding credentials and logs in directly when clicked.
-               Only visible in development mode. */}
-          {process.env.NODE_ENV === 'development' && (
-          <div className={styles.quickLogin}>
-            <p className={styles.quickLoginTitle}>Quick Login (Demo)</p>
-            <div className={styles.quickLoginGrid}>
-              {QUICK_LOGIN_USERS.map((user) => (
-                <button
-                  key={user.email}
-                  className={styles.quickLoginBtn}
-                  disabled={isSubmitting}
-                  onClick={async () => {
-                    setEmail(user.email);
-                    setPassword('');
-                    setIsSubmitting(true);
-                    setError('');
-                    const result = await login(user.email, DEV_PASSWORD);
-                    if (result.success) {
-                      router.push('/dashboard');
-                    } else {
-                      setError(result.error || 'Login failed');
-                      setIsSubmitting(false);
-                    }
-                  }}
-                >
-                  <span className={styles.quickLoginName}>{user.label}</span>
-                  <span className={styles.quickLoginRole}>{user.role}</span>
-                </button>
-              ))}
+               Only rendered when NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true. */}
+          {ENABLE_DEMO_LOGIN && (
+            <div className={styles.quickLogin}>
+              <p className={styles.quickLoginTitle}>Quick Login (Demo)</p>
+              <div className={styles.quickLoginGrid}>
+                {QUICK_LOGIN_USERS.map((user) => (
+                  <button
+                    key={user.email}
+                    type="button"
+                    className={styles.quickLoginBtn}
+                    disabled={isSubmitting}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      setEmail(user.email);
+                      setPassword('');
+                      setIsSubmitting(true);
+                      setError('');
+                      const result = await login(user.email, DEV_PASSWORD);
+                      if (result.success) {
+                        router.push('/dashboard');
+                      } else {
+                        setError(result.error || 'Login failed');
+                        setIsSubmitting(false);
+                      }
+                    }}
+                  >
+                    <span className={styles.quickLoginName}>{user.label}</span>
+                    <span className={styles.quickLoginRole}>{user.role}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
           )}
 
         </div>

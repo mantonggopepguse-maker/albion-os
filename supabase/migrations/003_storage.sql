@@ -23,35 +23,43 @@ ON CONFLICT (id) DO NOTHING;
 -- ─── Storage RLS Policies ───
 
 -- Receipts: any authenticated user can upload; finance/admin/ceo can read
-CREATE POLICY IF NOT EXISTS "receipts_select" ON storage.objects FOR SELECT USING (
+DROP POLICY IF EXISTS "receipts_select" ON storage.objects;
+CREATE POLICY "receipts_select" ON storage.objects FOR SELECT USING (
   bucket_id = 'receipts' AND auth.role() = 'authenticated'
 );
-CREATE POLICY IF NOT EXISTS "receipts_insert" ON storage.objects FOR INSERT WITH CHECK (
+DROP POLICY IF EXISTS "receipts_insert" ON storage.objects;
+CREATE POLICY "receipts_insert" ON storage.objects FOR INSERT WITH CHECK (
   bucket_id = 'receipts' AND auth.role() = 'authenticated'
 );
 
 -- Chat attachments: authenticated users can upload; participants can read
-CREATE POLICY IF NOT EXISTS "chat_attachments_select" ON storage.objects FOR SELECT USING (
+DROP POLICY IF EXISTS "chat_attachments_select" ON storage.objects;
+CREATE POLICY "chat_attachments_select" ON storage.objects FOR SELECT USING (
   bucket_id = 'chat_attachments' AND auth.role() = 'authenticated'
 );
-CREATE POLICY IF NOT EXISTS "chat_attachments_insert" ON storage.objects FOR INSERT WITH CHECK (
+DROP POLICY IF EXISTS "chat_attachments_insert" ON storage.objects;
+CREATE POLICY "chat_attachments_insert" ON storage.objects FOR INSERT WITH CHECK (
   bucket_id = 'chat_attachments' AND auth.role() = 'authenticated'
 );
 
 -- Employee documents: admin/ceo manage; employees read own
-CREATE POLICY IF NOT EXISTS "employee_documents_select_admin" ON storage.objects FOR SELECT USING (
+DROP POLICY IF EXISTS "employee_documents_select_admin" ON storage.objects;
+CREATE POLICY "employee_documents_select_admin" ON storage.objects FOR SELECT USING (
   bucket_id = 'employee_documents' AND get_user_role() IN ('super_admin', 'ceo')
 );
-CREATE POLICY IF NOT EXISTS "employee_documents_select_own" ON storage.objects FOR SELECT USING (
+DROP POLICY IF EXISTS "employee_documents_select_own" ON storage.objects;
+CREATE POLICY "employee_documents_select_own" ON storage.objects FOR SELECT USING (
   bucket_id = 'employee_documents' AND (storage.foldername(name))[1] = auth.uid()::text
 );
-CREATE POLICY IF NOT EXISTS "employee_documents_insert" ON storage.objects FOR INSERT WITH CHECK (
+DROP POLICY IF EXISTS "employee_documents_insert" ON storage.objects;
+CREATE POLICY "employee_documents_insert" ON storage.objects FOR INSERT WITH CHECK (
   bucket_id = 'employee_documents' AND get_user_role() IN ('super_admin', 'ceo')
 );
 
 -- ─── RPC: approve_payment (SECURITY DEFINER) ───
 -- Moves payment approval business logic server-side so it runs
 -- with elevated privileges, bypassing client-side RLS constraints.
+DROP FUNCTION IF EXISTS public.approve_payment(UUID, UUID) CASCADE;
 CREATE OR REPLACE FUNCTION public.approve_payment(
   p_payment_id UUID,
   p_approved_by UUID
@@ -133,6 +141,7 @@ END;
 $$;
 
 -- ─── RPC: reject_payment (SECURITY DEFINER) ───
+DROP FUNCTION IF EXISTS public.reject_payment(UUID, UUID, TEXT) CASCADE;
 CREATE OR REPLACE FUNCTION public.reject_payment(
   p_payment_id UUID,
   p_rejected_by UUID,
@@ -171,6 +180,7 @@ END;
 $$;
 
 -- ─── RPC: record_payment (SECURITY DEFINER) ───
+DROP FUNCTION IF EXISTS public.record_payment(UUID, UUID, NUMERIC, TEXT, TEXT, TEXT, UUID) CASCADE;
 CREATE OR REPLACE FUNCTION public.record_payment(
   p_invoice_id UUID,
   p_customer_id UUID,

@@ -39,16 +39,16 @@ function resolveKey(obj: Messages, key: string): string {
 }
 
 export function I18nProvider({ children, initialLocale }: { children: React.ReactNode; initialLocale?: Locale }) {
-  const [locale, setLocaleState] = useState<Locale>(initialLocale || defaultLocale);
+  const [locale, setLocaleState] = useState<Locale>(() => {
+    if (initialLocale) return initialLocale;
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('albionos-locale') as Locale | null;
+      if (stored && (['en', 'ha', 'ig', 'yo'] as Locale[]).includes(stored)) return stored;
+    }
+    return defaultLocale;
+  });
   const [messages, setMessages] = useState<Messages>({});
   const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    const stored = localStorage.getItem('albionos-locale') as Locale | null;
-    if (stored && (['en', 'ha', 'ig', 'yo'] as Locale[]).includes(stored)) {
-      setLocaleState(stored);
-    }
-  }, []);
 
   useEffect(() => {
     loadMessages(locale).then((msgs) => {

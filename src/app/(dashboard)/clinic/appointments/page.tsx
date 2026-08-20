@@ -2,7 +2,6 @@
 
 import { useState, useMemo, type FormEvent, type ChangeEvent } from 'react';
 import Topbar from '@/components/layout/Topbar';
-import { useAuth } from '@/lib/auth-context';
 import {
   useClinicAppointments,
   useClinicPatients,
@@ -82,8 +81,7 @@ const INITIAL_FORM: FormState = {
 };
 
 export default function AppointmentsPage() {
-  const { user } = useAuth();
-  const { appointments, loading: apptsLoading } = useClinicAppointments();
+  const { appointments, loading: apptsLoading, refetch } = useClinicAppointments();
   const { patients, loading: patientsLoading } = useClinicPatients();
 
   const [showModal, setShowModal] = useState(false);
@@ -142,6 +140,7 @@ export default function AppointmentsPage() {
       reason: form.reason || undefined,
     });
     if (result.success) {
+      await refetch();
       closeModal();
     }
     setIsSubmitting(false);
@@ -179,7 +178,7 @@ export default function AppointmentsPage() {
                   <div className={styles.appointmentTime}>{appt.time.slice(0, 5)}</div>
                   <div className={styles.appointmentInfo}>
                     <div className={styles.patientName}>
-                      {speciesIcon(appt.patient?.species)} {appt.patient?.name || 'Unknown'}
+                      {speciesIcon(appt.patient?.species || '')} {appt.patient?.name || 'Unknown'}
                     </div>
                     <div className={styles.patientSpecies}>
                       {appt.patient?.species || 'Unknown'} · Owner: {appt.owner?.full_name || 'N/A'}

@@ -5,7 +5,9 @@ import Link from 'next/link';
 import Topbar from '@/components/layout/Topbar';
 import { useUsers, useLocations, findLocationById } from '@/hooks/use-supabase-data';
 import { getRoleLabel, useAuth } from '@/lib/auth-context';
-import { addStaffUser, toggleUserStatus, updateStaffUser } from '@/lib/data-service';
+import { toggleUserStatus, updateStaffUser } from '@/lib/data-service';
+import { MOCK_USERS } from '@/lib/mock-data';
+import { createClient } from '@/lib/supabase/client';
 import type { UserRole, User } from '@/lib/types';
 import Modal from '@/components/ui/Modal';
 import styles from './staff.module.css';
@@ -16,6 +18,14 @@ const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
   finance_manager: 'badgeGreen',
   inventory_manager: 'badgeAmber',
   ceo: 'badgeGold',
+  clinic_admin: 'badgePurple',
+  vet: 'badgeTeal',
+  vet_tech: 'badgeOrange',
+  vet_assistant: 'badgeTeal',
+  receptionist: 'badgePink',
+  regional_manager: 'badgeIndigo',
+  security: 'badgeGray',
+  lab_scientist: 'badgeBlue',
 };
 
 export default function StaffPage() {
@@ -29,6 +39,7 @@ export default function StaffPage() {
   const [formData, setFormData] = useState({
     email: '',
     full_name: '',
+    password: '',
     role: 'sales_rep' as UserRole,
     location_id: '',
     phone: '',
@@ -55,20 +66,52 @@ export default function StaffPage() {
     setModalError('');
     setSubmitting(true);
 
-    const result = await addStaffUser({
+    if (process.env.NEXT_PUBLIC_USE_MOCK === 'true') {
+      const newUser: User = {
+        id: `usr-${Date.now()}`,
+        email: formData.email.trim().toLowerCase(),
+        full_name: formData.full_name.trim(),
+        role: formData.role,
+        location_id: formData.location_id || null,
+        phone: formData.phone.trim() || null,
+        avatar_url: null,
+        created_at: new Date().toISOString(),
+        is_active: true,
+      };
+      MOCK_USERS.unshift(newUser);
+      setShowModal(false);
+      setFormData({ email: '', full_name: '', password: '', role: 'sales_rep', location_id: '', phone: '' });
+      await refetch();
+      setSubmitting(false);
+      return;
+    }
+
+    const supabase = createClient();
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: formData.email,
+      password: formData.password,
+      options: { data: { full_name: formData.full_name } },
+    });
+
+    if (signUpError || !signUpData.user) {
+      setModalError(signUpError?.message || 'Failed to create user account');
+      setSubmitting(false);
+      return;
+    }
+
+    const { error: profileError } = await supabase.from('profiles').update({
       full_name: formData.full_name,
       role: formData.role,
       location_id: formData.location_id || null,
       phone: formData.phone || null,
-    });
+    }).eq('id', signUpData.user.id);
 
-    if (result.success) {
-      setShowModal(false);
-      setFormData({ email: '', full_name: '', role: 'sales_rep', location_id: '', phone: '' });
-      await refetch();
+    if (profileError) {
+      setModalError(profileError.message);
     } else {
-      setModalError(result.error || 'Failed to create staff member');
+      setShowModal(false);
+      setFormData({ email: '', full_name: '', password: '', role: 'sales_rep', location_id: '', phone: '' });
+      await refetch();
     }
 
     setSubmitting(false);
@@ -324,6 +367,17 @@ export default function StaffPage() {
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               style={{ padding: '0.625rem 0.875rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontSize: '0.875rem', fontFamily: 'inherit' }}
               placeholder="e.g. adaobi@albionpharma.com"
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate)' }}>Temporary Password</label>
+            <input
+              required
+              type="password"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              style={{ padding: '0.625rem 0.875rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontSize: '0.875rem', fontFamily: 'inherit' }}
+              placeholder="Temporary login password"
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>

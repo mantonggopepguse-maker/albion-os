@@ -20,7 +20,7 @@
  *                           given role is permitted to access
  */
 
-import { UserRole } from './auth-context';
+import type { UserRole } from '@/lib/types';
 
 /* ============================================================
    Type Definitions
@@ -59,19 +59,19 @@ export interface NavItem {
    Items are listed in the order they appear in the sidebar.
    The `roles` array on each entry controls visibility per role:
 
-   ┌─────────────────────┬────────┬──────────┬─────────┬───────────┐
-   │ Page                │ Admin  │ SalesRep │ Finance │ Inventory │
-   ├─────────────────────┼────────┼──────────┼─────────┼───────────┤
-   │ Dashboard           │  ✓     │  ✓       │  ✓      │  ✓        │
-   │ Chat                │  ✓     │  ✓       │  ✓      │  ✓        │
-   │ Products            │  ✓     │          │         │  ✓        │
-   │ Inventory           │  ✓     │  ✓       │         │  ✓        │
-   │ Customers           │  ✓     │  ✓       │         │           │
-   │ Invoices            │  ✓     │  ✓       │  ✓      │           │
-   │ Payments            │  ✓     │          │  ✓      │           │
-   │ Reports             │  ✓     │          │  ✓      │           │
-   │ Users               │  ✓     │          │         │           │
-   └─────────────────────┴────────┴──────────┴─────────┴───────────┘
+   ┌─────────────────────┬────────┬──────────┬─────────┬───────────┬─────┐
+   │ Page                │ Admin  │ SalesRep │ Finance │ Inventory │ CEO │
+   ├─────────────────────┼────────┼──────────┼─────────┼───────────┼─────┤
+   │ Dashboard           │  ✓     │  ✓       │  ✓      │  ✓        │ ✓   │
+   │ Chat                │  ✓     │  ✓       │  ✓      │  ✓        │ ✓   │
+   │ Products            │  ✓     │          │         │  ✓        │ ✓   │
+   │ Inventory           │  ✓     │  ✓       │         │  ✓        │ ✓   │
+   │ Customers           │  ✓     │  ✓       │         │           │ ✓   │
+   │ Invoices            │  ✓     │  ✓       │  ✓      │           │ ✓   │
+   │ Payments            │  ✓     │          │  ✓      │           │ ✓   │
+   │ Reports             │  ✓     │          │  ✓      │           │ ✓   │
+   │ Staff               │  ✓     │          │         │           │ ✓   │
+   └─────────────────────┴────────┴──────────┴─────────┴───────────┴─────┘
    ============================================================ */
 
 export const NAV_ITEMS: NavItem[] = [
@@ -88,11 +88,11 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['super_admin', 'sales_rep', 'finance_manager', 'inventory_manager', 'ceo'],
   },
   {
-    // Products — catalog management. Admin, inventory manager, and CEO.
+    // Products — catalog management and browsing. Admin, inventory manager, CEO, and sales reps (read-only).
     label: 'Products',
     href: '/products',
     icon: '💊',
-    roles: ['super_admin', 'inventory_manager', 'ceo'],
+    roles: ['super_admin', 'inventory_manager', 'ceo', 'sales_rep'],
   },
   {
     // Inventory — stock levels, batch tracking. Sales reps see read-only stock. CEO sees all read-only.
@@ -128,6 +128,13 @@ export const NAV_ITEMS: NavItem[] = [
     href: '/reports',
     icon: '📈',
     roles: ['super_admin', 'finance_manager', 'ceo'],
+  },
+  {
+    // Suppliers — manage suppliers and receive stock from them.
+    label: 'Suppliers',
+    href: '/suppliers',
+    icon: '🏭',
+    roles: ['super_admin', 'inventory_manager', 'ceo'],
   },
   {
     // Payroll — salary and payroll management. Super admin, finance, and CEO.

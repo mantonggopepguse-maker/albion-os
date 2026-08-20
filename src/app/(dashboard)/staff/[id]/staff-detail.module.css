@@ -284,6 +284,37 @@
 .leaveRejected { background: var(--color-danger-light); color: #dc2626; }
 .leaveCancelled { background: var(--color-bg); color: var(--color-text-muted); }
 
+.leaveActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.approveBtn,
+.rejectBtn {
+  padding: 4px var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.approveBtn {
+  background: var(--color-success);
+  color: #fff;
+}
+
+.rejectBtn {
+  background: var(--color-danger, #dc2626);
+  color: #fff;
+}
+
+.approveBtn:hover,
+.rejectBtn:hover {
+  opacity: 0.85;
+}
+
 /* ── Attendance ── */
 .attStatusBadge {
   display: inline-flex;

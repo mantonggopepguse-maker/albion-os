@@ -19,13 +19,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type {
+  SupabaseClient,
+  RealtimePostgresInsertPayload,
+  RealtimePostgresUpdatePayload,
+} from '@supabase/supabase-js';
+import type {
   Product, Customer, Invoice, InvoiceItem,
   Payment, InventoryItem, Location, User, ChatMessage,
   SalaryGrade, PayrollRun, Payslip,
   LeaveRequest, AttendanceLog,
   EmployeeDocument, PerformanceTarget, PerformanceReview,
-  LeaveType, DocumentType, TargetType,
+  LeaveType, DocumentType, TargetType, Supplier,
+  PatientWithOwner, AppointmentWithRelations, PatientQueueWithRelations,
+  TreatmentWithRelations, VetService, StockMovementWithRelations,
 } from '@/lib/types';
+import { transitionInvoice as dataTransitionInvoice } from '@/lib/data-service';
 import {
   MOCK_USERS,
   MOCK_LOCATIONS,
@@ -42,12 +50,19 @@ import {
   MOCK_EMPLOYEE_DOCUMENTS,
   MOCK_PERFORMANCE_TARGETS,
   MOCK_PERFORMANCE_REVIEWS,
+  MOCK_SUPPLIERS,
 } from '@/lib/mock-data';
 
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
+
 /* ── Supabase client singleton for this module ── */
-function getSupabase() {
+function getSupabase(): SupabaseClient {
   return createClient();
 }
+
+/** `chat_messages` row with an index signature so it can serve as a
+ *  RealtimePostgres*Payload row type (`T extends { [key: string]: any }`). */
+type ChatRow = ChatMessage & { [key: string]: unknown };
 
 /* ═══════════════════════════════════════════════════════════════
    PRODUCTS
@@ -74,7 +89,8 @@ export function useProducts(fetchInactive: boolean = false) {
     const { data, error } = await query.order('name');
 
     if (!error && data && data.length > 0) setProducts(data as Product[]);
-    else setProducts(fetchInactive ? MOCK_PRODUCTS : MOCK_PRODUCTS.filter((p) => p.is_active !== false));
+    else if (USE_MOCK_DATA) setProducts(fetchInactive ? MOCK_PRODUCTS : MOCK_PRODUCTS.filter((p) => p.is_active !== false));
+    else setProducts([]);
     setLoading(false);
   }, [fetchInactive]);
 
@@ -132,7 +148,8 @@ export function useCustomers(fetchInactive: boolean = false) {
     const { data, error } = await query.order('business_name');
 
     if (!error && data && data.length > 0) setCustomers(data as Customer[]);
-    else setCustomers(fetchInactive ? MOCK_CUSTOMERS : MOCK_CUSTOMERS.filter((c) => c.is_active !== false));
+    else if (USE_MOCK_DATA) setCustomers(fetchInactive ? MOCK_CUSTOMERS : MOCK_CUSTOMERS.filter((c) => c.is_active !== false));
+    else setCustomers([]);
     setLoading(false);
   }, [fetchInactive]);
 
@@ -193,8 +210,10 @@ export function useInvoices() {
         items: (inv.invoice_items as InvoiceItem[]) || [],
       }));
       setInvoices(mapped as Invoice[]);
-    } else {
+    } else if (USE_MOCK_DATA) {
       setInvoices(MOCK_INVOICES);
+    } else {
+      setInvoices([]);
     }
     setLoading(false);
   }, []);
@@ -271,12 +290,8 @@ export function useInvoices() {
   }, [refetch]);
 
   const updateInvoiceStatus = useCallback(async (invoiceId: string, status: string) => {
-    const { error } = await getSupabase()
-      .from('invoices')
-      .update({ status })
-      .eq('id', invoiceId);
-
-    if (error) return { success: false, error: error.message };
+    const result = await dataTransitionInvoice(invoiceId, status);
+    if (!result.success) return result;
     await refetch();
     return { success: true };
   }, [refetch]);
@@ -308,7 +323,8 @@ export function usePayments() {
       .order('created_at', { ascending: false });
 
     if (!error && data && data.length > 0) setPayments(data as Payment[]);
-    else setPayments(MOCK_PAYMENTS);
+    else if (USE_MOCK_DATA) setPayments(MOCK_PAYMENTS);
+    else setPayments([]);
     setLoading(false);
   }, []);
 
@@ -343,83 +359,28 @@ export function usePayments() {
   }, [refetch]);
 
   const approvePayment = useCallback(async (paymentId: string, approverId: string) => {
-    // Fetch payment to get invoice and amount
-    const { data: payment } = await getSupabase()
-      .from('payments')
-      .select('*')
-      .eq('id', paymentId)
-      .single();
-
-    if (!payment) return { success: false, error: 'Payment not found' };
-
-    if (payment.invoice_id) {
-      // Get the invoice to check outstanding balance
-      const { data: invoice } = await getSupabase()
-        .from('invoices')
-        .select('*')
-        .eq('id', payment.invoice_id)
-        .single();
-
-      if (invoice) {
-        // Calculate total approved payments for this invoice
-        const { data: approvedPayments } = await getSupabase()
-          .from('payments')
-          .select('amount')
-          .eq('invoice_id', payment.invoice_id)
-          .eq('status', 'approved');
-
-        const approvedTotal = (approvedPayments || []).reduce((sum, p) => sum + p.amount, 0);
-        const newPaid = approvedTotal + payment.amount;
-
-        if (newPaid > invoice.total) {
-          return { success: false, error: 'Payment exceeds remaining invoice balance' };
-        }
-
-        // Update invoice status
-        const invStatus = newPaid >= invoice.total ? 'paid' : 'partial';
-        await getSupabase()
-          .from('invoices')
-          .update({ status: invStatus })
-          .eq('id', payment.invoice_id);
-
-        // Update customer outstanding balance
-        const { data: customer } = await getSupabase()
-          .from('customers')
-          .select('outstanding_balance')
-          .eq('id', payment.customer_id)
-          .single();
-
-        if (customer) {
-          const newBalance = Math.max(0, customer.outstanding_balance - payment.amount);
-          await getSupabase()
-            .from('customers')
-            .update({ outstanding_balance: newBalance })
-            .eq('id', payment.customer_id);
-        }
-      }
-    }
-
-    const { error } = await getSupabase()
-      .from('payments')
-      .update({ status: 'approved', approved_by: approverId })
-      .eq('id', paymentId);
+    const { data, error } = await getSupabase().rpc('approve_payment', {
+      p_payment_id: paymentId,
+      p_approver_id: approverId,
+    });
 
     if (error) return { success: false, error: error.message };
+    const result = data as { success: boolean; error?: string };
+    if (!result.success) return { success: false, error: result.error };
     await refetch();
     return { success: true };
   }, [refetch]);
 
   const rejectPayment = useCallback(async (paymentId: string, approverId: string, reason?: string) => {
-    const { error } = await getSupabase()
-      .from('payments')
-      .update({
-        status: 'rejected',
-        approved_by: approverId,
-        notes: reason || 'Rejected',
-      })
-      .eq('id', paymentId);
+    const { data, error } = await getSupabase().rpc('reject_payment', {
+      p_payment_id: paymentId,
+      p_approver_id: approverId,
+      p_reason: reason || 'Rejected by finance',
+    });
 
     if (error) return { success: false, error: error.message };
+    const result = data as { success: boolean; error?: string };
+    if (!result.success) return { success: false, error: result.error };
     await refetch();
     return { success: true };
   }, [refetch]);
@@ -450,7 +411,8 @@ export function useInventory() {
       .order('created_at', { ascending: false });
 
     if (!error && data && data.length > 0) setInventory(data as InventoryItem[]);
-    else setInventory(MOCK_INVENTORY);
+    else if (USE_MOCK_DATA) setInventory(MOCK_INVENTORY);
+    else setInventory([]);
     setLoading(false);
   }, []);
 
@@ -460,82 +422,18 @@ export function useInventory() {
   }, [refetch]);
 
   const allocateStock = useCallback(async (input: AllocateStockInput) => {
-    /* Find source batches sorted by expiry (FEFO) */
-    const { data: sourceItems } = await getSupabase()
-      .from('inventory')
-      .select('*')
-      .eq('product_id', input.product_id)
-      .eq('location_id', input.from_location_id)
-      .gt('quantity', 0)
-      .order('expiry_date', { ascending: true });
-
-    if (!sourceItems || sourceItems.length === 0) {
-      return { success: false, error: 'No stock available at the source location' };
-    }
-
-    /* Pick the batch that matches the requested batch_number, or use earliest-expiring */
-    let sourceItem = sourceItems.find((s) => s.batch_number === input.batch_number);
-    if (!sourceItem) {
-      sourceItem = sourceItems[0];
-    }
-
-    if (sourceItem.quantity < input.quantity) {
-      return { success: false, error: 'Insufficient stock in the selected batch' };
-    }
-
-    /* Deduct from source */
-    const newQty = sourceItem.quantity - input.quantity;
-    const { error: updateError } = await getSupabase()
-      .from('inventory')
-      .update({
-        quantity: newQty,
-        status: newQty === 0 ? 'out_of_stock' : newQty < 50 ? 'low_stock' : 'in_stock',
-      })
-      .eq('id', sourceItem.id);
-
-    if (updateError) return { success: false, error: updateError.message };
-
-    /* Check if destination already has this batch */
-    const { data: destItem } = await getSupabase()
-      .from('inventory')
-      .select('*')
-      .eq('product_id', input.product_id)
-      .eq('location_id', input.to_location_id)
-      .eq('batch_number', input.batch_number)
-      .maybeSingle();
-
-    if (destItem) {
-      /* Add to existing record */
-      await getSupabase()
-        .from('inventory')
-        .update({ quantity: destItem.quantity + input.quantity, status: 'in_stock' })
-        .eq('id', destItem.id);
-    } else {
-      /* Create new record at destination */
-      await getSupabase()
-        .from('inventory')
-        .insert({
-          product_id: input.product_id,
-          location_id: input.to_location_id,
-          quantity: input.quantity,
-          batch_number: input.batch_number,
-          expiry_date: sourceItem.expiry_date,
-          status: 'in_stock',
-        });
-    }
-
-    /* Log the stock movement for audit */
     const { data: { user } } = await getSupabase().auth.getUser();
-    await getSupabase()
-      .from('stock_movements')
-      .insert({
-        product_id: input.product_id,
-        from_location_id: input.from_location_id,
-        to_location_id: input.to_location_id,
-        quantity: input.quantity,
-        movement_type: 'allocation',
-        performed_by: user?.id || null,
-      });
+    const { data, error } = await getSupabase().rpc('allocate_stock', {
+      p_product_id: input.product_id,
+      p_from_location_id: input.from_location_id,
+      p_to_location_id: input.to_location_id,
+      p_quantity: input.quantity,
+      p_batch_number: input.batch_number || null,
+      p_performed_by: user?.id || null,
+    });
+
+    if (error) return { success: false, error: error.message };
+    if (!data.success) return { success: false, error: data.error };
 
     await refetch();
     return { success: true };
@@ -560,8 +458,10 @@ export function useLocations() {
 
     if (!error && data && data.length > 0) {
       setLocations(data as Location[]);
-    } else {
+    } else if (USE_MOCK_DATA) {
       setLocations(MOCK_LOCATIONS);
+    } else {
+      setLocations([]);
     }
     setLoading(false);
   }, []);
@@ -594,8 +494,10 @@ export function useUsers() {
         location_name: (p.locations as { name: string }[] | null)?.[0]?.name || 'Unknown',
       }));
       setUsers(mapped as unknown as User[]);
-    } else {
+    } else if (USE_MOCK_DATA) {
       setUsers(MOCK_USERS);
+    } else {
+      setUsers([]);
     }
     setLoading(false);
   }, []);
@@ -656,7 +558,7 @@ export function useChatMessages(currentUserId: string | null, selectedUserId: st
           table: 'chat_messages',
           filter: `sender_id=in.(${currentUserId},${selectedUserId})`,
         },
-        (payload) => {
+        (payload: RealtimePostgresInsertPayload<ChatRow>) => {
           const newMsg = payload.new as ChatMessage;
           // Only add if it belongs to this conversation
           if (
@@ -675,7 +577,9 @@ export function useChatMessages(currentUserId: string | null, selectedUserId: st
     return () => { supabase.removeChannel(channel); };
   }, [currentUserId, selectedUserId]);
 
-  // Auto-mark received messages as read when viewing the thread
+  // Auto-mark received messages as read when viewing the thread.
+  // `messages` is a dep so messages that arrive via the realtime
+  // subscription are also marked read while the thread is open.
   useEffect(() => {
     if (!currentUserId || !selectedUserId) return;
 
@@ -685,19 +589,17 @@ export function useChatMessages(currentUserId: string | null, selectedUserId: st
 
     if (unread.length === 0) return;
 
-    unread.forEach((msg) => {
-      getSupabase()
-        .from('chat_messages')
-        .update({ is_read: true })
-        .eq('id', msg.id)
-        .then(() => {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === msg.id ? { ...m, is_read: true } : m))
-          );
-        });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUserId, selectedUserId]);
+    const unreadIds = unread.map((m) => m.id);
+    getSupabase()
+      .from('chat_messages')
+      .update({ is_read: true })
+      .in('id', unreadIds)
+      .then(() => {
+        setMessages((prev) =>
+          prev.map((m) => (unreadIds.includes(m.id) ? { ...m, is_read: true } : m))
+        );
+      });
+  }, [currentUserId, selectedUserId, messages]);
 
   const sendMessage = useCallback(async (content: string, attachment?: { url: string; type: string }) => {
     if (!selectedUserId || !currentUserId) return { success: false, error: 'No recipient' };
@@ -749,6 +651,51 @@ export function useMyMessages(userId: string | null) {
     return () => window.clearTimeout(timeoutId);
   }, [refetch]);
 
+  // Realtime subscription: keep contact-list previews and unread badges live.
+  // RLS restricts each user to their own conversations, so the feed is
+  // filtered client-side to messages involving this user.
+  useEffect(() => {
+    if (!userId) return;
+
+    const supabase = getSupabase();
+    const channel = supabase
+      .channel(`my-messages:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+        },
+        (payload: RealtimePostgresInsertPayload<ChatRow>) => {
+          const newMsg = payload.new as ChatMessage;
+          if (newMsg.sender_id !== userId && newMsg.receiver_id !== userId) return;
+          setAllMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [newMsg, ...prev];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chat_messages',
+        },
+        (payload: RealtimePostgresUpdatePayload<ChatRow>) => {
+          const updated = payload.new as ChatMessage;
+          if (updated.sender_id !== userId && updated.receiver_id !== userId) return;
+          setAllMessages((prev) =>
+            prev.map((m) => (m.id === updated.id ? { ...updated } : m))
+          );
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [userId]);
+
   return { allMessages, loading, refetch };
 }
 
@@ -767,7 +714,8 @@ export function useSalaryGrades() {
       .order('grade');
 
     if (!error && data && data.length > 0) setSalaryGrades(data as SalaryGrade[]);
-    else setSalaryGrades(MOCK_SALARY_GRADES);
+    else if (USE_MOCK_DATA) setSalaryGrades(MOCK_SALARY_GRADES);
+    else setSalaryGrades([]);
     setLoading(false);
   }, []);
 
@@ -794,7 +742,8 @@ export function usePayrollRuns() {
       .order('created_at', { ascending: false });
 
     if (!error && data && data.length > 0) setPayrollRuns(data as PayrollRun[]);
-    else setPayrollRuns(MOCK_PAYROLL_RUNS);
+    else if (USE_MOCK_DATA) setPayrollRuns(MOCK_PAYROLL_RUNS);
+    else setPayrollRuns([]);
     setLoading(false);
   }, []);
 
@@ -810,7 +759,8 @@ export function usePayrollRuns() {
       .eq('payroll_run_id', payrollRunId);
 
     if (!error && data && data.length > 0) return data as Payslip[];
-    return MOCK_PAYSLIPS.filter((ps) => ps.payroll_run_id === payrollRunId);
+    if (USE_MOCK_DATA) return MOCK_PAYSLIPS.filter((ps) => ps.payroll_run_id === payrollRunId);
+    return [];
   }, []);
 
   return { payrollRuns, loading, refetch, getPayslipsForRun };
@@ -831,7 +781,8 @@ export function useLeaveRequests() {
       .order('created_at', { ascending: false });
 
     if (!error && data && data.length > 0) setLeaveRequests(data as LeaveRequest[]);
-    else setLeaveRequests(MOCK_LEAVE_REQUESTS);
+    else if (USE_MOCK_DATA) setLeaveRequests(MOCK_LEAVE_REQUESTS);
+    else setLeaveRequests([]);
     setLoading(false);
   }, []);
 
@@ -919,7 +870,8 @@ export function useAttendanceLogs() {
       .order('date', { ascending: false });
 
     if (!error && data && data.length > 0) setLogs(data as AttendanceLog[]);
-    else setLogs(MOCK_ATTENDANCE_LOGS);
+    else if (USE_MOCK_DATA) setLogs(MOCK_ATTENDANCE_LOGS);
+    else setLogs([]);
     setLoading(false);
   }, []);
 
@@ -1021,7 +973,8 @@ export function useEmployeeDocuments() {
       .order('created_at', { ascending: false });
 
     if (!error && data && data.length > 0) setDocuments(data as EmployeeDocument[]);
-    else setDocuments(MOCK_EMPLOYEE_DOCUMENTS);
+    else if (USE_MOCK_DATA) setDocuments(MOCK_EMPLOYEE_DOCUMENTS);
+    else setDocuments([]);
     setLoading(false);
   }, []);
 
@@ -1093,7 +1046,8 @@ export function usePerformanceTargets() {
       .order('created_at', { ascending: false });
 
     if (!error && data && data.length > 0) setTargets(data as PerformanceTarget[]);
-    else setTargets(MOCK_PERFORMANCE_TARGETS);
+    else if (USE_MOCK_DATA) setTargets(MOCK_PERFORMANCE_TARGETS);
+    else setTargets([]);
     setLoading(false);
   }, []);
 
@@ -1183,7 +1137,8 @@ export function usePerformanceReviews() {
       .order('created_at', { ascending: false });
 
     if (!error && data && data.length > 0) setReviews(data as PerformanceReview[]);
-    else setReviews(MOCK_PERFORMANCE_REVIEWS);
+    else if (USE_MOCK_DATA) setReviews(MOCK_PERFORMANCE_REVIEWS);
+    else setReviews([]);
     setLoading(false);
   }, []);
 
@@ -1224,7 +1179,7 @@ export function findUserById(users: User[], id: string): User | undefined {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useClinicPatients() {
-  const [patients, setPatients] = useState<any[]>([]);
+  const [patients, setPatients] = useState<PatientWithOwner[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
@@ -1236,7 +1191,7 @@ export function useClinicPatients() {
       .order('created_at', { ascending: false });
 
     if (!error && data && data.length > 0) {
-      setPatients(data as any[]);
+      setPatients(data as PatientWithOwner[]);
     } else {
       const { getPatients } = await import('@/lib/data-service');
       setPatients(await getPatients());
@@ -1253,7 +1208,7 @@ export function useClinicPatients() {
 }
 
 export function useClinicAppointments() {
-  const [appointments, setAppointments] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<AppointmentWithRelations[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
@@ -1265,7 +1220,7 @@ export function useClinicAppointments() {
       .order('date', { ascending: true });
 
     if (!error && data && data.length > 0) {
-      setAppointments(data as any[]);
+      setAppointments(data as AppointmentWithRelations[]);
     } else {
       const { getAppointments } = await import('@/lib/data-service');
       setAppointments(await getAppointments());
@@ -1282,7 +1237,7 @@ export function useClinicAppointments() {
 }
 
 export function useClinicQueue() {
-  const [queue, setQueue] = useState<any[]>([]);
+  const [queue, setQueue] = useState<PatientQueueWithRelations[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
@@ -1294,7 +1249,7 @@ export function useClinicQueue() {
       .order('created_at', { ascending: false });
 
     if (!error && data && data.length > 0) {
-      setQueue(data as any[]);
+      setQueue(data as PatientQueueWithRelations[]);
     } else {
       const { getQueue } = await import('@/lib/data-service');
       setQueue(await getQueue());
@@ -1311,7 +1266,7 @@ export function useClinicQueue() {
 }
 
 export function useVetServices() {
-  const [services, setServices] = useState<any[]>([]);
+  const [services, setServices] = useState<VetService[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
@@ -1324,7 +1279,7 @@ export function useVetServices() {
       .order('name');
 
     if (!error && data && data.length > 0) {
-      setServices(data as any[]);
+      setServices(data as VetService[]);
     } else {
       const { getVetServices } = await import('@/lib/data-service');
       setServices(await getVetServices());
@@ -1341,7 +1296,7 @@ export function useVetServices() {
 }
 
 export function useClinicTreatments() {
-  const [treatments, setTreatments] = useState<any[]>([]);
+  const [treatments, setTreatments] = useState<TreatmentWithRelations[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
@@ -1353,7 +1308,7 @@ export function useClinicTreatments() {
       .order('date', { ascending: false });
 
     if (!error && data && data.length > 0) {
-      setTreatments(data as any[]);
+      setTreatments(data as TreatmentWithRelations[]);
     } else {
       const { getTreatments } = await import('@/lib/data-service');
       setTreatments(await getTreatments());
@@ -1367,4 +1322,167 @@ export function useClinicTreatments() {
   }, [refetch]);
 
   return { treatments, loading, refetch };
+}
+
+export function useStockMovements(limit = 20) {
+  const [movements, setMovements] = useState<StockMovementWithRelations[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from('stock_movements')
+      .select('*, product:product_id(name), from_location:from_location_id(name), to_location:to_location_id(name)')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (!error && data) {
+      setMovements(data as StockMovementWithRelations[]);
+    } else {
+      setMovements([]);
+    }
+    setLoading(false);
+  }, [limit]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { movements, loading, refetch };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SUPPLIERS
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useSuppliers() {
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    if (USE_MOCK_DATA) {
+      setSuppliers(MOCK_SUPPLIERS.filter((s) => s.is_active !== false));
+      setLoading(false);
+      return;
+    }
+    const { data, error } = await getSupabase()
+      .from('suppliers')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
+
+    if (!error && data && data.length > 0) setSuppliers(data as Supplier[]);
+    else setSuppliers([]);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [refetch]);
+
+  const addSupplier = useCallback(async (input: {
+    name: string;
+    contact_person?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+  }) => {
+    if (USE_MOCK_DATA) {
+      const newSup: Supplier = {
+        id: `sup-${Date.now()}`,
+        name: input.name.trim(),
+        contact_person: input.contact_person?.trim() || null,
+        email: input.email?.trim() || null,
+        phone: input.phone?.trim() || null,
+        address: input.address?.trim() || null,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      MOCK_SUPPLIERS.unshift(newSup);
+      await refetch();
+      return { success: true, data: newSup };
+    }
+    const { data, error } = await getSupabase()
+      .from('suppliers')
+      .insert({
+        name: input.name.trim(),
+        contact_person: input.contact_person?.trim() || null,
+        email: input.email?.trim() || null,
+        phone: input.phone?.trim() || null,
+        address: input.address?.trim() || null,
+      })
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    await refetch();
+    return { success: true, data: data as Supplier };
+  }, [refetch]);
+
+  const updateSupplier = useCallback(async (
+    supplierId: string,
+    input: {
+      name?: string;
+      contact_person?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+    }
+  ) => {
+    if (USE_MOCK_DATA) {
+      const idx = MOCK_SUPPLIERS.findIndex((s) => s.id === supplierId);
+      if (idx !== -1) {
+        MOCK_SUPPLIERS[idx] = {
+          ...MOCK_SUPPLIERS[idx],
+          ...(input.name ? { name: input.name.trim() } : {}),
+          ...(input.contact_person !== undefined ? { contact_person: input.contact_person?.trim() || null } : {}),
+          ...(input.email !== undefined ? { email: input.email?.trim() || null } : {}),
+          ...(input.phone !== undefined ? { phone: input.phone?.trim() || null } : {}),
+          ...(input.address !== undefined ? { address: input.address?.trim() || null } : {}),
+          updated_at: new Date().toISOString(),
+        };
+      }
+      await refetch();
+      return { success: true };
+    }
+    const { error } = await getSupabase()
+      .from('suppliers')
+      .update({
+        ...(input.name ? { name: input.name.trim() } : {}),
+        ...(input.contact_person !== undefined ? { contact_person: input.contact_person?.trim() || null } : {}),
+        ...(input.email !== undefined ? { email: input.email?.trim() || null } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone?.trim() || null } : {}),
+        ...(input.address !== undefined ? { address: input.address?.trim() || null } : {}),
+      })
+      .eq('id', supplierId);
+
+    if (error) return { success: false, error: error.message };
+    await refetch();
+    return { success: true };
+  }, [refetch]);
+
+  const deleteSupplier = useCallback(async (supplierId: string) => {
+    if (USE_MOCK_DATA) {
+      const idx = MOCK_SUPPLIERS.findIndex((s) => s.id === supplierId);
+      if (idx !== -1) {
+        MOCK_SUPPLIERS[idx].is_active = false;
+      }
+      await refetch();
+      return { success: true };
+    }
+    const { error } = await getSupabase()
+      .from('suppliers')
+      .update({ is_active: false })
+      .eq('id', supplierId);
+
+    if (error) return { success: false, error: error.message };
+    await refetch();
+    return { success: true };
+  }, [refetch]);
+
+  return { suppliers, loading, refetch, addSupplier, updateSupplier, deleteSupplier };
 }

@@ -22,6 +22,7 @@ import {
   useInventory, useProducts, useLocations,
   findProductById, findLocationById,
 } from '@/hooks/use-supabase-data';
+import { stockTake } from '@/lib/data-service';
 import { useAuth } from '@/lib/auth-context';
 import styles from './inventory.module.css';
 
@@ -75,7 +76,12 @@ export default function InventoryPage() {
   /* ── State ── */
   const [activeTab, setActiveTab] = useState<TabKey>('warehouse');
   const [showModal, setShowModal] = useState(false);
+  const [showStockTakeModal, setShowStockTakeModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  /* ── Stock take state ── */
+  const [stockTakeEntries, setStockTakeEntries] = useState<Record<string, string>>({});
+  const [stockTakeSubmitting, setStockTakeSubmitting] = useState(false);
 
   /* ── Allocate form state ── */
   const [fromLocation, setFromLocation] = useState('');
@@ -86,7 +92,7 @@ export default function InventoryPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   /* ── Data from Supabase hooks ── */
-  const { inventory, allocateStock } = useInventory();
+  const { inventory, allocateStock, refetch } = useInventory();
   const { products } = useProducts();
   const { locations } = useLocations();
 
@@ -105,6 +111,9 @@ export default function InventoryPage() {
       case 'reps':
         return inventory.filter((item) => {
           const loc = findLocationById(locations, item.location_id);
+          if (user?.role === 'sales_rep') {
+            return item.location_id === user?.location_id;
+          }
           return loc?.type === 'territory';
         });
       case 'expiring':
@@ -197,6 +206,54 @@ export default function InventoryPage() {
     setIsSubmitting(false);
   }, [productId, batchNumber, toLocation, allocateQty, fromLocation, selectedBatch, products, locations, allocateStock]);
 
+  /* ── Stock Take ── */
+  const stockTakeItems = useMemo(() =>
+    inventory.filter((item) => {
+      if (user?.role === 'sales_rep') {
+        return item.location_id === user?.location_id;
+      }
+      const loc = findLocationById(locations, item.location_id);
+      return loc?.type === 'warehouse';
+    }),
+    [inventory, locations, user]
+  );
+
+  const openStockTake = useCallback(() => {
+    const entries: Record<string, string> = {};
+    stockTakeItems.forEach((item) => { entries[item.id] = String(item.quantity); });
+    setStockTakeEntries(entries);
+    setShowStockTakeModal(true);
+  }, [stockTakeItems]);
+
+  const handleStockTakeSubmit = useCallback(async () => {
+    setStockTakeSubmitting(true);
+    let updated = 0;
+    let errors = 0;
+
+    for (const item of stockTakeItems) {
+      const actual = parseInt(stockTakeEntries[item.id] ?? String(item.quantity), 10);
+      if (isNaN(actual) || actual === item.quantity) continue;
+
+      const result = await stockTake({ inventory_id: item.id, actual_quantity: actual });
+      if (result.success) {
+        updated++;
+      } else {
+        errors++;
+      }
+    }
+
+    setStockTakeSubmitting(false);
+    setShowStockTakeModal(false);
+
+    if (errors === 0) {
+      setToast({ message: `Stock take complete — ${updated} item(s) adjusted`, type: 'success' });
+      if (updated > 0) refetch();
+    } else {
+      setToast({ message: `${updated} updated, ${errors} error(s)`, type: 'error' });
+      refetch();
+    }
+  }, [stockTakeItems, stockTakeEntries, refetch]);
+
   return (
     <>
       <Topbar title="Inventory" />
@@ -217,11 +274,16 @@ export default function InventoryPage() {
         {/* ── Toolbar ── */}
         <div className={styles.toolbar}>
           <h3 className={styles.tableTitle}>{tabTitles[activeTab]}</h3>
-          {!isCeo && (
-            <button className={styles.allocateBtn} onClick={openModal}>
-              📦 Allocate Stock
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className={styles.stockTakeBtn} onClick={openStockTake}>
+              📋 Stock Take
             </button>
-          )}
+            {!isCeo && user?.role !== 'sales_rep' && (
+              <button className={styles.allocateBtn} onClick={openModal}>
+                📦 Allocate Stock
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ── Inventory table ── */}
@@ -405,6 +467,95 @@ export default function InventoryPage() {
               </button>
             </div>
           </form>
+        </Modal>
+
+        {/* ── Stock Take Modal ── */}
+        <Modal
+          isOpen={showStockTakeModal}
+          onClose={() => !stockTakeSubmitting && setShowStockTakeModal(false)}
+          title={user?.role === 'sales_rep' ? "Territory Stock Take" : "Warehouse Stock Take"}
+          subtitle={user?.role === 'sales_rep' ? "Enter actual quantities for your territory stock. Items with changes will be adjusted." : "Enter actual quantities for warehouse stock. Items with changes will be adjusted."}
+          maxWidth="800px"
+        >
+          <div style={{ maxHeight: '400px', overflowY: 'auto', marginBottom: '1rem' }}>
+            <table className={styles.table} style={{ marginBottom: 0 }}>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Batch</th>
+                  <th>Current Qty</th>
+                  <th>Actual Qty</th>
+                  <th>Δ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockTakeItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className={styles.emptyState} style={{ padding: '2rem' }}>
+                      <span>📦</span>
+                      <p>No warehouse stock to count</p>
+                    </td>
+                  </tr>
+                ) : (
+                  stockTakeItems.map((item) => {
+                    const product = findProductById(products, item.product_id);
+                    const actual = parseInt(stockTakeEntries[item.id] ?? String(item.quantity), 10);
+                    const diff = isNaN(actual) ? 0 : actual - item.quantity;
+                    return (
+                      <tr key={item.id}>
+                        <td>
+                          <span className={styles.productName}>{product?.name || 'Unknown'}</span>
+                        </td>
+                        <td className={styles.batchCell}>{item.batch_number}</td>
+                        <td className={styles.qtyCell}>{item.quantity.toLocaleString('en-NG')}</td>
+                        <td>
+                          <input
+                            type="number"
+                            min={0}
+                            value={stockTakeEntries[item.id] ?? String(item.quantity)}
+                            onChange={(e) => setStockTakeEntries({ ...stockTakeEntries, [item.id]: e.target.value })}
+                            style={{
+                              width: '100px',
+                              padding: '4px 8px',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-sm)',
+                              fontFamily: 'monospace',
+                              fontSize: '0.875rem',
+                            }}
+                          />
+                        </td>
+                        <td style={{
+                          fontFamily: 'monospace',
+                          fontWeight: 600,
+                          color: diff === 0 ? 'var(--color-gray)' : diff > 0 ? '#16a34a' : '#dc2626',
+                        }}>
+                          {diff === 0 ? '—' : diff > 0 ? `+${diff}` : String(diff)}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className={styles.formActions}>
+            <button
+              type="button"
+              className={styles.cancelBtn}
+              onClick={() => setShowStockTakeModal(false)}
+              disabled={stockTakeSubmitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={styles.submitBtn}
+              onClick={handleStockTakeSubmit}
+              disabled={stockTakeSubmitting}
+            >
+              {stockTakeSubmitting ? 'Saving…' : 'Save Adjustments'}
+            </button>
+          </div>
         </Modal>
 
         {/* ── Toast ── */}

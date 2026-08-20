@@ -7,10 +7,21 @@
  * protection or session refresh, rather than every single request.
  */
 
-import { type NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
+import { getSupabaseConfig, isSupabaseMockMode } from '@/lib/supabase/config';
 
 export async function proxy(request: NextRequest) {
+  if (isSupabaseMockMode()) {
+    return NextResponse.next();
+  }
+
+  try {
+    getSupabaseConfig();
+  } catch {
+    return NextResponse.json({ error: 'Service configuration unavailable' }, { status: 503 });
+  }
+
   return await updateSession(request);
 }
 

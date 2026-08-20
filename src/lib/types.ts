@@ -45,7 +45,15 @@ export type UserRole =
   | 'sales_rep'
   | 'finance_manager'
   | 'inventory_manager'
-  | 'ceo';
+  | 'ceo'
+  | 'clinic_admin'
+  | 'vet'
+  | 'vet_tech'
+  | 'vet_assistant'
+  | 'receptionist'
+  | 'regional_manager'
+  | 'security'
+  | 'lab_scientist';
 
 /* ============================================================
    User  →  Supabase table: `users`
@@ -510,6 +518,14 @@ export type TargetStatus = 'active' | 'achieved' | 'missed' | 'cancelled';
 
 export type DocumentType = 'contract' | 'id_card' | 'certification' | 'degree' | 'nafdac_license' | 'other';
 
+export interface CustomPayrollAdjustment {
+  id: string;
+  label: string;
+  type: 'flat' | 'percentage';
+  value: number;
+  amount: number;
+}
+
 export interface SalaryGrade {
   id: string;
   grade: string;
@@ -533,6 +549,11 @@ export interface Salary {
   tax_rate: number;
   pension_rate: number;
   nhis_rate: number;
+  tax_deduction?: number;
+  loan_repayment?: number;
+  unmet_target_penalty?: number;
+  custom_deductions?: CustomPayrollAdjustment[];
+  custom_additions?: CustomPayrollAdjustment[];
   total_deductions: number;
   net_pay: number;
   effective_date: string;
@@ -568,9 +589,37 @@ export interface Payslip {
   paye_tax: number;
   pension_deduction: number;
   nhis_deduction: number;
+  tax_deduction?: number;
+  loan_repayment?: number;
+  unmet_target_penalty?: number;
+  custom_deductions?: CustomPayrollAdjustment[];
+  custom_additions?: CustomPayrollAdjustment[];
   total_deductions: number;
   net_pay: number;
   created_at: string;
+}
+
+export interface BranchExpense {
+  id: string;
+  location_id: string;
+  category: 'inventory_purchase' | 'utilities' | 'payroll' | 'maintenance' | 'rent' | 'equipment' | 'other';
+  amount: number;
+  description: string;
+  expense_date: string;
+  recorded_by: string;
+  receipt_url?: string | null;
+  created_at: string;
+}
+
+export interface BranchFinancialInsights {
+  location_id: string;
+  location_name: string;
+  location_type: string;
+  total_inflow: number;
+  total_expenditure: number;
+  expenses_breakdown: { category: string; amount: number }[];
+  net_margin: number;
+  profitability_rate: number;
 }
 
 export interface LeaveRequest {
@@ -680,6 +729,7 @@ export type QueuePriority = 'normal' | 'urgent' | 'emergency';
 export interface Patient {
   id: string;
   owner_id: string;
+  location_id: string | null;
   name: string;
   species: Species;
   breed: string | null;
@@ -719,6 +769,7 @@ export interface Treatment {
   id: string;
   patient_id: string;
   vet_id: string;
+  location_id: string | null;
   date: string;
   chief_complaint: string | null;
   diagnosis: string | null;
@@ -772,4 +823,87 @@ export interface VetService {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/* ============================================================
+   Joined / relational row types (Supabase `select` with joins)
+   ============================================================ */
+
+/** Shape of the `owner:owner_id(...)` join used by clinic queries. */
+export interface ClinicOwner {
+  id: string;
+  full_name: string | null;
+  name?: string | null;
+  phone?: string | null;
+}
+
+/** Minimal `patients` projection returned by the `patient:patient_id(...)` join. */
+export interface PatientRef {
+  id: string;
+  name: string;
+  species: string;
+}
+
+/** `patients` row + optional `owner` join. */
+export interface PatientWithOwner extends Patient {
+  owner?: ClinicOwner | null;
+}
+
+/** `appointments` row + optional `patient` / `owner` joins. */
+export interface AppointmentWithRelations extends Appointment {
+  patient?: PatientRef | null;
+  owner?: ClinicOwner | null;
+}
+
+/** `patient_queue` row + optional `patient` / `owner` joins. */
+export interface PatientQueueWithRelations extends PatientQueue {
+  patient?: PatientRef | null;
+  owner?: ClinicOwner | null;
+}
+
+/** `treatments` row + optional `patient` / `vet` joins. */
+export interface TreatmentWithRelations extends Treatment {
+  patient?: PatientRef | null;
+  vet?: ClinicOwner | null;
+}
+
+export type StockMovementType =
+  | 'allocation'
+  | 'return'
+  | 'receipt'
+  | 'adjustment'
+  | 'write_off'
+  | 'sale';
+
+export interface StockMovement {
+  id: string;
+  product_id: string;
+  from_location_id: string | null;
+  to_location_id: string | null;
+  supplier_id: string | null;
+  quantity: number;
+  movement_type: StockMovementType;
+  reference_id: string | null;
+  notes: string | null;
+  performed_by: string | null;
+  created_at: string;
+}
+
+/** `stock_movements` row + optional `product` / location joins. */
+export interface StockMovementWithRelations extends StockMovement {
+  product?: { name: string } | null;
+  from_location?: { name: string } | null;
+  to_location?: { name: string } | null;
 }

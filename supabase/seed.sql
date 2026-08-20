@@ -384,3 +384,56 @@ BEGIN
   ON CONFLICT (id) DO NOTHING;
 
 END $$;
+
+-- ============================================================
+-- CLINIC MANAGEMENT SEED DATA
+-- Seeds patients, appointments, treatments, patient_queue,
+-- and vet_services.
+-- ============================================================
+DO $$
+DECLARE
+  v_admin UUID;
+  v_chidi UUID;
+  v_loc_delta UUID;
+  v_patient_max UUID;
+  v_patient_bella UUID;
+  v_treatment UUID;
+BEGIN
+  SELECT id INTO v_admin FROM auth.users WHERE email = 'admin@albionpharma.com' LIMIT 1;
+  SELECT id INTO v_chidi FROM auth.users WHERE email = 'chidi@albionpharma.com' LIMIT 1;
+  SELECT id INTO v_loc_delta FROM locations WHERE name = 'Delta Veterinary Clinic' LIMIT 1;
+
+  -- ──────────────────────────────────────────────────────────
+  -- Seed patients
+  -- ──────────────────────────────────────────────────────────
+  INSERT INTO patients (id, owner_id, name, species, breed, gender, date_of_birth, weight_kg, color, spayed_neutered)
+  SELECT * FROM (VALUES
+    ('pat-0001-0000-0000-0000-000000000001', v_chidi, 'Max',   'Dog', 'German Shepherd', 'Male',   '2022-05-10', 32.5, 'Black & Tan', true),
+    ('pat-0001-0000-0000-0000-000000000002', v_admin, 'Bella', 'Cat', 'Persian',         'Female', '2021-08-20', 4.2,  'White',       true)
+  ) AS p(id, owner_id, name, species, breed, gender, date_of_birth, weight_kg, color, spayed_neutered)
+  ON CONFLICT (id) DO NOTHING;
+
+  SELECT id INTO v_patient_max FROM patients WHERE name = 'Max' LIMIT 1;
+  SELECT id INTO v_patient_bella FROM patients WHERE name = 'Bella' LIMIT 1;
+
+  -- ──────────────────────────────────────────────────────────
+  -- Seed appointments
+  -- ──────────────────────────────────────────────────────────
+  INSERT INTO appointments (id, patient_id, owner_id, vet_id, location_id, procedure_type, date, time, reason, status)
+  SELECT * FROM (VALUES
+    ('apt-0001-0000-0000-0000-000000000001', v_patient_max,   v_chidi, v_admin, v_loc_delta, 'Vaccination', '2026-07-10', '09:00:00', 'Annual Booster', 'scheduled'),
+    ('apt-0001-0000-0000-0000-000000000002', v_patient_bella, v_admin, v_admin, v_loc_delta, 'Checkup',     '2026-07-11', '14:30:00', 'Lethargy',       'scheduled')
+  ) AS a(id, patient_id, owner_id, vet_id, location_id, procedure_type, date, time, reason, status)
+  ON CONFLICT (id) DO NOTHING;
+
+  -- ──────────────────────────────────────────────────────────
+  -- Seed vet services
+  -- ──────────────────────────────────────────────────────────
+  INSERT INTO vet_services (id, name, description, category, species, price)
+  SELECT * FROM (VALUES
+    ('srv-0001-0000-0000-0000-000000000001', 'General Consultation', 'Standard health checkup', 'Consultation', 'All', 15000.00),
+    ('srv-0001-0000-0000-0000-000000000002', 'Rabies Vaccination',   'Annual rabies booster',     'Vaccination',  'Dog/Cat', 5000.00)
+  ) AS vs(id, name, description, category, species, price)
+  ON CONFLICT (id) DO NOTHING;
+
+END $$;

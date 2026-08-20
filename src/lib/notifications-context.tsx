@@ -33,7 +33,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
 
-  const now = useMemo(() => Date.now(), []);
+  const [now] = useState(() => Date.now());
 
   const notifications = useMemo<AppNotification[]>(() => {
     if (!user) return [];

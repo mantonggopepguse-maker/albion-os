@@ -1,10 +1,20 @@
 'use client';
 
-import { useAuth } from '@/lib/auth-context';
+import { useMemo } from 'react';
+import Link from 'next/link';
 import Topbar from '@/components/layout/Topbar';
+import {
+  useLocations,
+  useClinicPatients,
+  useClinicAppointments,
+  useClinicTreatments,
+  useInventory,
+  useProducts,
+} from '@/hooks/use-supabase-data';
+import type { Location } from '@/lib/types';
 import styles from './clinic.module.css';
 
-function fmt(n: number): string {
+function fmtNgn(n: number): string {
   return '₦' + n.toLocaleString('en-NG');
 }
 
@@ -37,87 +47,120 @@ function StatCard({
   );
 }
 
-function TodayAppointments() {
-  const appointments = [
-    { time: '09:00', patient: 'Max (Golden Retriever)', reason: 'Annual vaccination', status: 'completed' as const },
-    { time: '10:30', patient: 'Luna (Siamese Cat)', reason: 'Spay surgery follow-up', status: 'completed' as const },
-    { time: '11:45', patient: 'Rex (German Shepherd)', reason: 'Lameness assessment', status: 'scheduled' as const },
-    { time: '13:00', patient: 'Bella (Pomeranian)', reason: 'Dental cleaning', status: 'scheduled' as const },
-    { time: '14:30', patient: 'Oscar (Parrot)', reason: 'Wing trim & checkup', status: 'scheduled' as const },
-  ];
-
+function BranchCard({ clinic, patients, appointments, treatments, stockUnits, stockValue }: {
+  clinic: Location;
+  patients: number;
+  appointments: number;
+  treatments: number;
+  stockUnits: number;
+  stockValue: string;
+}) {
   return (
-    <div className={styles.appointmentList}>
-      {appointments.map((apt, i) => (
-        <div key={i} className={styles.appointmentItem}>
-          <span className={styles.appointmentTime}>{apt.time}</span>
-          <div className={styles.appointmentInfo}>
-            <span className={styles.appointmentName}>{apt.patient}</span>
-            <span className={styles.appointmentReason}>{apt.reason}</span>
-          </div>
-          <span
-            className={`${styles.statusBadge} ${
-              apt.status === 'completed' ? styles.statusCompleted : styles.statusScheduled
-            }`}
-          >
-            {apt.status}
+    <Link href={`/clinic/${clinic.id}`} className={styles.branchCard}>
+      <div className={styles.branchHeader}>
+        <span className={styles.branchIcon}>🏥</span>
+        <div className={styles.branchHeadInfo}>
+          <span className={styles.branchName}>{clinic.name}</span>
+          <span className={styles.branchMeta}>
+            {clinic.state || clinic.region || '—'} &middot; Clinic
           </span>
         </div>
-      ))}
-    </div>
+      </div>
+      <div className={styles.branchStats}>
+        <div className={styles.branchStat}>
+          <span className={styles.branchStatValue}>{patients}</span>
+          <span className={styles.branchStatLabel}>Patients</span>
+        </div>
+        <div className={styles.branchStat}>
+          <span className={styles.branchStatValue}>{appointments}</span>
+          <span className={styles.branchStatLabel}>Appointments</span>
+        </div>
+        <div className={styles.branchStat}>
+          <span className={styles.branchStatValue}>{treatments}</span>
+          <span className={styles.branchStatLabel}>Treatments</span>
+        </div>
+      </div>
+      <div className={styles.branchFoot}>
+        <span>{stockUnits.toLocaleString('en-NG')} units in stock</span>
+        <span className={styles.branchValue}>{stockValue}</span>
+      </div>
+    </Link>
   );
 }
 
 export default function ClinicPage() {
-  const { user } = useAuth();
+  const { locations } = useLocations();
+  const { patients } = useClinicPatients();
+  const { appointments } = useClinicAppointments();
+  const { treatments } = useClinicTreatments();
+  const { inventory } = useInventory();
+  const { products } = useProducts();
 
-  if (!user) return null;
+  const productPrice = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of products) map.set(p.id, p.unit_price || 0);
+    return map;
+  }, [products]);
+
+  const clinics = useMemo(() => locations.filter((l) => l.type === 'clinic'), [locations]);
+
+  const branchStats = useMemo(() => {
+    return clinics.map((clinic) => {
+      const clinicPatients = patients.filter((p) => p.location_id === clinic.id).length;
+      const clinicAppts = appointments.filter((a) => a.location_id === clinic.id).length;
+      const clinicTx = treatments.filter((t) => t.location_id === clinic.id).length;
+      const stock = inventory.filter((i) => i.location_id === clinic.id);
+      const stockUnits = stock.reduce((sum, i) => sum + (i.quantity || 0), 0);
+      const stockValue = stock.reduce((sum, i) => sum + (i.quantity || 0) * (productPrice.get(i.product_id) || 0), 0);
+      return { clinic, clinicPatients, clinicAppts, clinicTx, stockUnits, stockValue };
+    });
+  }, [clinics, patients, appointments, treatments, inventory, productPrice]);
+
+  const totalPatients = patients.length;
+  const totalAppts = appointments.length;
+  const totalStockValue = branchStats.reduce((sum, b) => sum + b.stockValue, 0);
 
   return (
     <>
-      <Topbar title="Clinic Dashboard" />
+      <Topbar title="Clinic Branches" />
       <div className={styles.page}>
         <div className={styles.greeting}>
           <h2 className={styles.greetingText}>
-            Welcome to Albion Pet Clinic 🐾
+            Clinic Branch Performance
           </h2>
           <p className={styles.greetingSub}>
-            Manage patient records, appointments, treatments, and queue all in one place.
+            Track progress, inventory, and performance across your clinic branches.
           </p>
         </div>
 
         <div className={styles.statsGrid}>
-          <StatCard label="Total Patients" value="847" icon="🐾" color="var(--color-info-light)" />
-          <StatCard label="Today's Appointments" value="12" icon="📅" color="var(--color-gold-tint)" />
-          <StatCard label="Queue Waiting" value="4" icon="🚶" color="var(--color-warning-light)" />
-          <StatCard label="Active Treatments" value="18" icon="💉" color="var(--color-success-light)" />
+          <StatCard label="Clinics" value={String(clinics.length)} icon="🏥" color="var(--color-ocean)" />
+          <StatCard label="Total Patients" value={totalPatients.toLocaleString('en-NG')} icon="🐾" color="var(--color-info-light)" />
+          <StatCard label="Appointments" value={totalAppts.toLocaleString('en-NG')} icon="📅" color="var(--color-gold-tint)" />
+          <StatCard label="Inventory Value" value={fmtNgn(totalStockValue)} icon="💊" color="var(--color-success-light)" />
         </div>
 
         <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Quick Links</h3>
-          <div className={styles.actionGrid}>
-            <a href="/clinic/patients" className={styles.actionCard}>
-              <span className={styles.actionIcon}>🐾</span>
-              <span className={styles.actionLabel}>Patients</span>
-            </a>
-            <a href="/clinic/appointments" className={styles.actionCard}>
-              <span className={styles.actionIcon}>📅</span>
-              <span className={styles.actionLabel}>Appointments</span>
-            </a>
-            <a href="/clinic/treatments" className={styles.actionCard}>
-              <span className={styles.actionIcon}>💉</span>
-              <span className={styles.actionLabel}>Treatments</span>
-            </a>
-            <a href="/clinic/queue" className={styles.actionCard}>
-              <span className={styles.actionIcon}>🚶</span>
-              <span className={styles.actionLabel}>Queue</span>
-            </a>
-          </div>
-        </div>
-
-        <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Today&apos;s Appointments</h3>
-          <TodayAppointments />
+          <h3 className={styles.sectionTitle}>Branch Overview</h3>
+          {branchStats.length === 0 ? (
+            <div className={styles.emptyState}>
+              <p>No clinic branches found. Add a location with type &ldquo;Clinic&rdquo; to get started.</p>
+            </div>
+          ) : (
+            <div className={styles.branchGrid}>
+              {branchStats.map((b) => (
+                <BranchCard
+                  key={b.clinic.id}
+                  clinic={b.clinic}
+                  patients={b.clinicPatients}
+                  appointments={b.clinicAppts}
+                  treatments={b.clinicTx}
+                  stockUnits={b.stockUnits}
+                  stockValue={fmtNgn(b.stockValue)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </>

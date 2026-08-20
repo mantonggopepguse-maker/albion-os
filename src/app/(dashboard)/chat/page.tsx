@@ -36,6 +36,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Topbar from '@/components/layout/Topbar';
 import { useAuth, getRoleLabel, getRoleColor } from '@/lib/auth-context';
 import { useUsers, useChatMessages, useMyMessages } from '@/hooks/use-supabase-data';
@@ -286,6 +287,7 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState('');
   const [uploading, setUploading] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<{ url: string; type: string } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /** Ref to the invisible sentinel div at the bottom of the messages area. */
@@ -310,6 +312,16 @@ export default function ChatPage() {
     if (!currentDataUserId) return allUsers;
     return allUsers.filter((u) => u.id !== currentDataUserId);
   }, [allUsers, currentDataUserId]);
+
+  const searchParams = useSearchParams();
+  const roleParam = searchParams.get('role');
+
+  useEffect(() => {
+    if (roleParam && !selectedContactId && contacts.length > 0) {
+      const match = contacts.find((c) => c.role === roleParam);
+      if (match) setSelectedContactId(match.id);
+    }
+  }, [roleParam, selectedContactId, contacts]);
 
   /**
    * Filtered contact list — narrows `contacts` by search query.
@@ -388,10 +400,15 @@ export default function ChatPage() {
     if (!file || !selectedContactId) return;
 
     setUploading(true);
+    setUploadError(null);
     const result = await uploadFile('chat_attachments', file, `chat/${selectedContactId}/${file.name}`);
     setUploading(false);
 
-    if (result.error) return;
+    if (result.error) {
+      console.error('File upload failed:', result.error);
+      setUploadError('Failed to upload file. Please try again.');
+      return;
+    }
 
     const type = file.type.startsWith('image/') ? 'image' : 'document';
     setPendingAttachment({ url: result.url, type });
@@ -497,6 +514,13 @@ export default function ChatPage() {
             <>
               {/* Thread header — shows selected contact's avatar, name, and status */}
               <div className={styles.threadHeader}>
+                <button
+                  onClick={() => setSelectedContactId(null)}
+                  className={styles.mobileBackBtn}
+                  title="Back to contacts"
+                >
+                  ← Contacts
+                </button>
                 <div
                   className={styles.threadAvatar}
                   style={{
@@ -555,6 +579,11 @@ export default function ChatPage() {
 
               {/* Compose bar — input field + attach button + send button */}
               <div className={styles.inputArea}>
+                {uploadError && (
+                  <p style={{ color: '#ef4444', fontSize: '12px', margin: '0 0 6px 8px' }}>
+                    {uploadError}
+                  </p>
+                )}
                 <div className={styles.inputContainer}>
                   <input
                     ref={fileInputRef}

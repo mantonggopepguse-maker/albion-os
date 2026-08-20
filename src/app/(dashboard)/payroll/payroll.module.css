@@ -221,7 +221,13 @@
   vertical-align: middle;
 }
 
-/* ── Animations ── */
+.payslipTableWrap {
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -233,13 +239,15 @@
 }
 
 @media (max-width: 1024px) {
-  .tableContainer { overflow-x: auto; }
+  .tableContainer { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .table { min-width: 800px; }
+  .payslipTable { min-width: 650px; }
 }
 
 @media (max-width: 640px) {
   .page { padding: var(--space-4); }
   .header { flex-direction: column; gap: var(--space-3); }
+  .processBtn { width: 100%; justify-content: center; }
   .statsBar { flex-wrap: wrap; gap: var(--space-3); }
   .statDivider { display: none; }
 }

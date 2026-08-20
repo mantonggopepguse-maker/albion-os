@@ -10,6 +10,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    exclude: ['e2e/**', 'node_modules/**'],
+    exclude: ['e2e/**', '**/node_modules/**'],
+    env: {
+      NEXT_PUBLIC_USE_MOCK: 'true',
+    },
   },
 });

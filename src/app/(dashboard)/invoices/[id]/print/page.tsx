@@ -53,11 +53,8 @@ export default function InvoicePrintPage({ params }: { params: Promise<{ id: str
       <div className={styles.header}>
         <div>
           <div className={styles.logoRow}>
-            <div className={styles.logoBox}>A</div>
-            <div>
-              <h1 className={styles.companyName}>Albion Pharmaceuticals</h1>
-              <p className={styles.companyTagline}>Nigeria&apos;s Trusted Veterinary Partner</p>
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element -- static SVG logo; next/image not suitable for print */}
+            <img src="/albion-logo.svg" alt="Albion Pharmaceuticals" className={styles.logoImg} />
           </div>
         </div>
         <div className={styles.invoiceTitle}>

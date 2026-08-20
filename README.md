@@ -1,36 +1,104 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AlbionOS — Enterprise Pharmaceutical Management
 
-## Getting Started
+Enterprise operating system for Albion Pharmaceuticals (Nigeria). Manages inventory, sales, invoicing, payments, payroll, HR, internal chat, and veterinary clinic operations.
 
-First, run the development server:
+## Tech Stack
+
+- **Frontend:** Next.js 16, React 19, TypeScript, CSS Modules
+- **Backend:** Supabase (PgSQL, Auth, Realtime, Storage)
+- **Testing:** Vitest (unit), Playwright (e2e)
+- **Deployment:** Docker → Google Cloud Run
+
+## Quick Start
 
 ```bash
+# 1. Install dependencies
+npm install
+
+# 2. Copy environment file
+cp .env.example .env.local
+# Fill in your Supabase project credentials
+
+# 3. Start dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# 4. Run tests
+npm test           # Unit tests (Vitest)
+npm run test:e2e   # E2E tests (Playwright)
+npm run lint       # Lint check
+npm run build      # Production build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Required | Description |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
+| `SUPABASE_SERVICE_ROLE_KEY` | No | Server-only admin key |
+| `NEXT_PUBLIC_ENABLE_DEMO_LOGIN` | No | Set `true` to show demo login buttons |
+| `NEXT_PUBLIC_USE_MOCK` | No | Set `true` to enable mock data fallback |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Database
 
-## Learn More
+Schema is in `supabase/schema.sql`. Apply via Supabase SQL Editor or:
+```bash
+# Or use the migration file:
+psql $DATABASE_URL -f supabase/migrations/001_schema.sql
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/           # Next.js App Router pages
+│   ├── login/     # Authentication
+│   ├── signup/    # Registration
+│   ├── dashboard/ # Role-specific dashboards
+│   ├── products/  # Product catalog
+│   ├── inventory/ # Stock management
+│   ├── customers/ # Customer directory
+│   ├── invoices/  # Sales invoicing
+│   ├── payments/  # Payment verification
+│   ├── reports/   # Analytics
+│   ├── payroll/   # Payroll processing
+│   ├── staff/     # User management
+│   ├── chat/      # Internal messaging
+│   └── clinic/    # Veterinary clinic
+├── components/    # Reusable UI components
+├── hooks/         # React hooks for data access
+├── lib/           # Utilities, types, auth, data service
+└── i18n/          # Internationalization (EN, HA, IG, YO)
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Security
 
-## Deploy on Vercel
+- All database tables have Row Level Security (RLS)
+- Payment approval runs via SECURITY DEFINER RPCs (server-side)
+- Financial actions logged to immutable `audit_log` table
+- Demo login gated behind `NEXT_PUBLIC_ENABLE_DEMO_LOGIN=false`
+- Mock data tree-shaken from production builds (`NEXT_PUBLIC_USE_MOCK=false`)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+# Build Docker image
+docker build -t albion-os .
+
+# Push to Google Container Registry
+docker tag albion-os gcr.io/$PROJECT_ID/albion-os
+docker push gcr.io/$PROJECT_ID/albion-os
+
+# Deploy to Cloud Run (Cost-Optimized Scale-to-Zero)
+gcloud run deploy albion-os \
+  --image gcr.io/$PROJECT_ID/albion-os \
+  --platform managed \
+  --region europe-west1 \
+  --allow-unauthenticated \
+  --memory 512Mi \
+  --cpu 1 \
+  --min-instances 0 \
+  --max-instances 3
+```
+
+See `docs/deployment-checklist.md` for the full deployment guide.

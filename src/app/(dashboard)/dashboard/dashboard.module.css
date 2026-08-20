@@ -35,17 +35,22 @@
 
 /* StatCard: Claymorphic soft card */
 .statCard {
-  background: var(--color-surface);
-  border-radius: var(--radius-2xl);
-  padding: var(--space-5);
-  box-shadow: var(--shadow-clay-card);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.85) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.05),
+    inset 0 1px 1px rgba(255, 255, 255, 0.95);
   transition: all var(--transition-base);
   animation: fadeInUp 0.5s ease-out;
   position: relative;
   overflow: hidden;
 }
 
-/* Subtlest gold accent indicator line at the top of StatCards for premium feel */
+/* Subtlest gold/colored accent indicator line at the top of StatCards for premium feel */
 .statCard::before {
   content: '';
   position: absolute;
@@ -53,14 +58,16 @@
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
-  opacity: 0.7;
+  background: linear-gradient(90deg, #0F172A, #D97706);
+  opacity: 0.85;
 }
 
 .statCard:hover {
   transform: translateY(-3px); /* Smooth hover lift */
-  background: var(--color-surface-hover);
-  box-shadow: var(--shadow-clay-pop);
+  box-shadow:
+    0 16px 36px rgba(15, 23, 42, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 1);
+  border-color: rgba(217, 119, 6, 0.35);
 }
 
 .statTop {
@@ -410,6 +417,12 @@
   border: 1px solid rgba(239, 68, 68, 0.15);
 }
 
+.statusDraft {
+  background: rgba(148, 163, 184, 0.15);
+  color: #64748b;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
 /* Payment Queue */
 .paymentQueue {
   display: flex;
@@ -487,6 +500,37 @@
 
 .approveBtn:active {
   transform: scale(0.98);
+}
+
+/* RejectBtn: Soft Danger Button matching ApproveBtn */
+.rejectBtn {
+  padding: var(--space-1) var(--space-4);
+  background: transparent;
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--transition-fast);
+}
+
+.rejectBtn:hover {
+  background: var(--color-danger);
+  color: #fff;
+  transform: scale(1.04);
+}
+
+.rejectBtn:active {
+  transform: scale(0.98);
+}
+
+.rejectBtn:disabled,
+.approveBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* Rep Summary */
@@ -605,10 +649,42 @@
 
 @media (max-width: 640px) {
   .statsGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.65rem;
   }
 
   .page {
-    padding: var(--space-4);
+    padding: 0.85rem;
+  }
+
+  .statCard {
+    padding: 0.75rem 0.85rem;
+    border-radius: 1rem;
+    min-height: 96px;
+  }
+
+  .statValue {
+    font-size: 1.15rem;
+  }
+
+  .statLabel {
+    font-size: 10px;
+    letter-spacing: 0.5px;
+  }
+
+  .statIcon {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .statTrend {
+    margin-top: 0.4rem;
+    padding-top: 0.4rem;
+    font-size: 10px;
+  }
+
+  .greetingText {
+    font-size: 1.35rem;
   }
 }

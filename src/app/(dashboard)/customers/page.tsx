@@ -137,7 +137,7 @@ export default function CustomersPage() {
   const isCeo = currentUser?.role === 'ceo';
 
   /** Live customer data from Supabase — fetch inactive if CEO */
-  const { customers, loading: customersLoading, addCustomer } = useCustomers(isCeo);
+  const { customers, loading: customersLoading, addCustomer, refetch } = useCustomers(isCeo);
   /** Live location data from Supabase — used in the "Add Customer" modal dropdown. */
   const { locations, loading: locationsLoading } = useLocations();
 
@@ -222,7 +222,7 @@ export default function CustomersPage() {
    * user previously filled out some fields and closed without saving.
    */
   const openModal = () => {
-    setForm(INITIAL_FORM);
+    setForm({ ...INITIAL_FORM, location_id: currentUser?.location_id || '' });
     setShowModal(true);
   };
 
@@ -696,6 +696,7 @@ export default function CustomersPage() {
             if (result.success) {
               setEditCustomerId(null);
               setToast({ message: 'Customer updated successfully', type: 'success' });
+              void refetch();
             } else {
               setToast({ message: result.error || 'Failed to update', type: 'error' });
             }

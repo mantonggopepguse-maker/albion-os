@@ -23,6 +23,7 @@
  */
 
 import { createClient } from '@/lib/supabase/client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   Customer,
   Product,
@@ -46,6 +47,10 @@ import type {
   DocumentType,
   PerformanceTarget,
   TargetType,
+  TargetStatus,
+  Species,
+  PetGender,
+  AppointmentStatus,
   PerformanceReview,
   Patient,
   Appointment,
@@ -53,6 +58,9 @@ import type {
   TreatmentMedication,
   PatientQueue,
   VetService,
+  CustomPayrollAdjustment,
+  BranchExpense,
+  BranchFinancialInsights,
 } from '@/lib/types';
 
 import {
@@ -80,55 +88,12 @@ import {
   MOCK_TREATMENT_MEDICATIONS,
   MOCK_PATIENT_QUEUE,
   findProductById,
-  findLocationById,
-  findCustomerById,
-  findUserById,
-  findSalaryGradeById,
-  getSalaryByUserId,
-  getPayslipsByUserId,
-  getPayslipsByPayrollRun,
-  getLeaveRequestsByUserId,
-  getLeaveBalancesByUserId,
-  getAttendanceLogsByUserId,
-  getDocumentsByUserId,
-  getPerformanceTargetsByUserId,
-  getPerformanceReviewsByUserId,
 } from '@/lib/mock-data';
 
-function getSupabase() {
-  try {
-    return createClient();
-  } catch {
-    const stubResult = { data: null, error: new Error('Supabase not configured') };
-    const chain: any = new Proxy({}, {
-      get() { return () => chain; },
-    });
-    chain.then = undefined;
-    const stubFrom = () => {
-      const q: any = new Proxy({}, {
-        get(_t, prop: string) {
-          if (prop === 'then') return undefined;
-          if (prop === 'select') return () => q;
-          if (prop === 'insert') return () => q;
-          if (prop === 'update') return () => q;
-          if (prop === 'delete') return () => q;
-          if (prop === 'eq') return () => q;
-          if (prop === 'neq') return () => q;
-          if (prop === 'in') return () => q;
-          if (prop === 'single') return () => stubResult;
-          if (prop === 'maybeSingle') return () => stubResult;
-          if (prop === 'order') return () => q;
-          if (prop === 'limit') return () => q;
-          if (prop === 'range') return () => q;
-          if (prop === 'textSearch') return () => q;
-          if (prop === 'match') return () => q;
-          return () => q;
-        },
-      });
-      return q;
-    };
-    return { from: stubFrom };
-  }
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
+
+function getSupabase(): SupabaseClient {
+  return createClient();
 }
 
 /* ============================================================
@@ -168,7 +133,8 @@ export async function getCustomers(): Promise<Customer[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('customers').select('*').order('name');
   if (!error && data) return data as Customer[];
-  return [...MOCK_CUSTOMERS];
+  if (USE_MOCK_DATA) return [...MOCK_CUSTOMERS];
+  return [];
 }
 
 /** Input shape for adding a new customer — omits auto-generated fields */
@@ -219,7 +185,7 @@ export async function addCustomer(input: AddCustomerInput): Promise<ServiceRespo
     location_id: input.location_id,
     is_active: true,
   };
-  MOCK_CUSTOMERS.push(newCustomer);
+  if (USE_MOCK_DATA) MOCK_CUSTOMERS.push(newCustomer);
   return { success: true, data: newCustomer };
 }
 
@@ -232,7 +198,8 @@ export async function getProducts(): Promise<Product[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('products').select('*').order('name');
   if (!error && data) return data as Product[];
-  return [...MOCK_PRODUCTS];
+  if (USE_MOCK_DATA) return [...MOCK_PRODUCTS];
+  return [];
 }
 
 /** Input shape for adding a new product */
@@ -264,10 +231,12 @@ export async function addProduct(input: AddProductInput): Promise<ServiceRespons
 
   if (!error && data) return { success: true, data: data as Product };
 
-  const existingSku = MOCK_PRODUCTS.find(
-    (p) => p.sku.toLowerCase() === input.sku.trim().toLowerCase()
-  );
-  if (existingSku) return { success: false, error: `SKU "${input.sku}" already exists` };
+  if (USE_MOCK_DATA) {
+    const existingSku = MOCK_PRODUCTS.find(
+      (p) => p.sku.toLowerCase() === input.sku.trim().toLowerCase()
+    );
+    if (existingSku) return { success: false, error: `SKU "${input.sku}" already exists` };
+  }
 
   const newProduct: Product = {
     id: generateId(),
@@ -281,7 +250,7 @@ export async function addProduct(input: AddProductInput): Promise<ServiceRespons
     created_at: new Date().toISOString(),
     is_active: true,
   };
-  MOCK_PRODUCTS.push(newProduct);
+  if (USE_MOCK_DATA) MOCK_PRODUCTS.push(newProduct);
   return { success: true, data: newProduct };
 }
 
@@ -294,7 +263,8 @@ export async function getInvoices(): Promise<Invoice[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('invoices').select('*').order('created_at', { ascending: false });
   if (!error && data) return data as Invoice[];
-  return [...MOCK_INVOICES];
+  if (USE_MOCK_DATA) return [...MOCK_INVOICES];
+  return [];
 }
 
 /** Input shape for a single line item when creating an invoice */
@@ -337,10 +307,7 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<ServiceR
   const vat = Math.round(subtotal * 0.075);
   const total = subtotal + vat;
 
-  const year = new Date().getFullYear();
-  const existing = MOCK_INVOICES.filter((i) => i.invoice_number.includes(`INV-${year}`));
-  const nextNum = String(existing.length + 1).padStart(3, '0');
-  const invoiceNumber = `INV-${year}-${nextNum}`;
+  const invoiceNumber = generateInvoiceNumber();
 
   const supabase = getSupabase();
   const { data, error } = await supabase.from('invoices').insert({
@@ -371,19 +338,28 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<ServiceR
     created_at: new Date().toISOString(),
     due_date: input.due_date,
   };
-  MOCK_INVOICES.push(newInvoice);
+  if (USE_MOCK_DATA) MOCK_INVOICES.push(newInvoice);
   return { success: true, data: newInvoice };
 }
 
+let _seqCounter = 0;
+let _lastSeqTs = 0;
+
 /**
- * Generates the next sequential invoice number for the current year.
- * Format: INV-{YYYY}-{NNN}
+ * Generates a unique invoice number for the current year.
+ * Format: INV-{YYYY}-{XXXXX} (timestamp-based, no race condition)
  */
 export function generateInvoiceNumber(): string {
   const year = new Date().getFullYear();
-  const existing = MOCK_INVOICES.filter((i) => i.invoice_number.includes(`INV-${year}`));
-  const nextNum = String(existing.length + 1).padStart(3, '0');
-  return `INV-${year}-${nextNum}`;
+  const now = Date.now();
+  if (now === _lastSeqTs) {
+    _seqCounter++;
+  } else {
+    _lastSeqTs = now;
+    _seqCounter = 0;
+  }
+  const seq = (now + _seqCounter).toString(36).toUpperCase().slice(-5);
+  return `INV-${year}-${seq}`;
 }
 
 /** Valid invoice status transitions map */
@@ -397,39 +373,94 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 /**
  * Transitions an invoice to a new status with stock deduction on finalization.
+ * Deducts inventory (FEFO) when moving from draft → sent.
  */
 export async function transitionInvoice(invoiceId: string, newStatus: string): Promise<ServiceResponse> {
   const supabase = getSupabase();
-  const { data: invData } = await supabase.from('invoices').select('*').eq('id', invoiceId).single();
-  const currentStatus = invData ? (invData as any).status : undefined;
-  let invoice = invData ? (invData as Invoice) : MOCK_INVOICES.find((i) => i.id === invoiceId);
+  type InvoiceWithItems = Invoice & { invoice_items?: InvoiceItem[] };
+  const { data: invRaw } = await supabase.from('invoices').select('*, invoice_items(*)').eq('id', invoiceId).single();
+  const invData = invRaw as InvoiceWithItems | null;
+  const invoice = invData
+    ? ({ ...invData, items: invData.invoice_items || [] }) as Invoice
+    : (USE_MOCK_DATA ? MOCK_INVOICES.find((i) => i.id === invoiceId) : undefined);
   if (!invoice) return { success: false, error: 'Invoice not found' };
-  const allowed = VALID_TRANSITIONS[currentStatus || invoice.status];
+  const currentStatus = invData ? invData.status : invoice.status;
+  const allowed = VALID_TRANSITIONS[currentStatus];
   if (!allowed || !allowed.includes(newStatus)) {
-    return { success: false, error: `Cannot transition from ${currentStatus || invoice.status} to ${newStatus}` };
+    return { success: false, error: `Cannot transition from ${currentStatus} to ${newStatus}` };
   }
 
-  if ((currentStatus || invoice.status) === 'draft' && newStatus === 'sent') {
-    for (const item of (invoice as Invoice).items || []) {
-      const locationItems = MOCK_INVENTORY.filter(
-        (i) => i.product_id === item.product_id && i.location_id === (invoice as Invoice).location_id
-      );
+  const isFinalizing = currentStatus === 'draft' && newStatus === 'sent';
+
+  if (isFinalizing && invoice.items && invoice.items.length > 0) {
+    const locationId = invoice.location_id;
+    for (const item of invoice.items) {
       let toDeduct = item.quantity;
-      for (const li of locationItems) {
-        if (toDeduct <= 0) break;
-        const taken = Math.min(li.quantity, toDeduct);
-        li.quantity -= taken;
-        toDeduct -= taken;
-        if (li.quantity === 0) li.status = 'out_of_stock' as const;
-        else if (li.quantity <= 50) li.status = 'low_stock' as const;
+
+      if (invRaw) {
+        const { data: batches } = await supabase
+          .from('inventory')
+          .select('*')
+          .eq('product_id', item.product_id)
+          .eq('location_id', locationId)
+          .gt('quantity', 0)
+          .order('expiry_date', { ascending: true });
+
+        if (!batches || batches.length === 0) {
+          return { success: false, error: `Insufficient stock for ${item.product_name} at this location` };
+        }
+
+        for (const batch of batches) {
+          if (toDeduct <= 0) break;
+          const taken = Math.min(batch.quantity, toDeduct);
+          const newQty = batch.quantity - taken;
+          await supabase
+            .from('inventory')
+            .update({
+              quantity: newQty,
+              status: newQty === 0 ? 'out_of_stock' : newQty <= 50 ? 'low_stock' : 'in_stock',
+            })
+            .eq('id', batch.id);
+          toDeduct -= taken;
+        }
+      }
+
+      if (USE_MOCK_DATA) {
+        const locationItems = MOCK_INVENTORY.filter(
+          (i) => i.product_id === item.product_id && i.location_id === locationId
+        ).sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
+
+        for (const li of locationItems) {
+          if (toDeduct <= 0) break;
+          const taken = Math.min(li.quantity, toDeduct);
+          li.quantity -= taken;
+          toDeduct -= taken;
+          if (li.quantity === 0) li.status = 'out_of_stock' as const;
+          else if (li.quantity <= 50) li.status = 'low_stock' as const;
+        }
+      }
+    }
+
+    /* Log stock movement for the entire invoice */
+    if (invRaw) {
+      for (const item of invoice.items) {
+        await supabase.from('stock_movements').insert({
+          product_id: item.product_id,
+          from_location_id: locationId,
+          to_location_id: null,
+          quantity: item.quantity,
+          movement_type: 'sale',
+          reference_id: invoiceId,
+          notes: `Invoice ${invoiceId} finalized`,
+        });
       }
     }
   }
 
-  if (invData) {
+  if (invRaw) {
     await supabase.from('invoices').update({ status: newStatus }).eq('id', invoiceId);
   }
-  if (!invData) {
+  if (!invRaw && USE_MOCK_DATA) {
     const mockInv = MOCK_INVOICES.find((i) => i.id === invoiceId);
     if (mockInv) mockInv.status = newStatus as typeof mockInv.status;
   }
@@ -445,7 +476,8 @@ export async function getPayments(): Promise<Payment[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('payments').select('*').order('created_at', { ascending: false });
   if (!error && data) return data as Payment[];
-  return [...MOCK_PAYMENTS];
+  if (USE_MOCK_DATA) return [...MOCK_PAYMENTS];
+  return [];
 }
 
 /** Input shape for recording a new payment */
@@ -496,7 +528,7 @@ export async function recordPayment(input: RecordPaymentInput): Promise<ServiceR
     notes: input.notes?.trim() || null,
     created_at: new Date().toISOString(),
   };
-  MOCK_PAYMENTS.push(newPayment);
+  if (USE_MOCK_DATA) MOCK_PAYMENTS.push(newPayment);
   return { success: true, data: newPayment };
 }
 
@@ -504,7 +536,7 @@ export async function recordPayment(input: RecordPaymentInput): Promise<ServiceR
 export async function reconcileCash(paymentId: string, approvedBy: string): Promise<ServiceResponse> {
   const supabase = getSupabase();
   const { data: pmt } = await supabase.from('payments').select('*').eq('id', paymentId).single();
-  const payment = pmt ? (pmt as Payment) : MOCK_PAYMENTS.find((p) => p.id === paymentId);
+  const payment = pmt ? (pmt as Payment) : (USE_MOCK_DATA ? MOCK_PAYMENTS.find((p) => p.id === paymentId) : undefined);
   if (!payment) return { success: false, error: 'Payment not found' };
   if (payment.status !== 'pending') return { success: false, error: 'Payment is not pending' };
   if (payment.method !== 'cash') return { success: false, error: 'Only cash payments can be reconciled' };
@@ -513,15 +545,14 @@ export async function reconcileCash(paymentId: string, approvedBy: string): Prom
 
 /** Approves a pending payment — updates payment, invoice status, and customer balance */
 export async function approvePayment(paymentId: string, approvedBy: string): Promise<ServiceResponse> {
-  let payment: Payment | undefined;
   const supabase = getSupabase();
   const { data: pmt } = await supabase.from('payments').select('*').eq('id', paymentId).single();
-  payment = pmt ? (pmt as Payment) : MOCK_PAYMENTS.find((p) => p.id === paymentId);
+  const payment = pmt ? (pmt as Payment) : MOCK_PAYMENTS.find((p) => p.id === paymentId);
   if (!payment) return { success: false, error: 'Payment not found' };
   if (payment.status !== 'pending') return { success: false, error: 'Payment is not pending' };
 
-  if (payment.invoice_id) {
-    let invoice = MOCK_INVOICES.find((i) => i.id === payment.invoice_id);
+  if (payment.invoice_id && USE_MOCK_DATA) {
+    const invoice = MOCK_INVOICES.find((i) => i.id === payment.invoice_id);
     if (!invoice) return { success: false, error: 'Linked invoice not found' };
 
     const approvedTotal = MOCK_PAYMENTS
@@ -548,7 +579,7 @@ export async function approvePayment(paymentId: string, approvedBy: string): Pro
   if (pmt) {
     await supabase.from('payments').update({ status: 'approved', approved_by: approvedBy }).eq('id', paymentId);
   }
-  if (!pmt) {
+  if (!pmt && USE_MOCK_DATA) {
     const mockPmt = MOCK_PAYMENTS.find((p) => p.id === paymentId);
     if (mockPmt) { mockPmt.status = 'approved'; mockPmt.approved_by = approvedBy; }
   }
@@ -559,14 +590,14 @@ export async function approvePayment(paymentId: string, approvedBy: string): Pro
 export async function rejectPayment(paymentId: string, approvedBy: string, reason: string): Promise<ServiceResponse> {
   const supabase = getSupabase();
   const { data: pmt } = await supabase.from('payments').select('*').eq('id', paymentId).single();
-  const payment = pmt ? (pmt as Payment) : MOCK_PAYMENTS.find((p) => p.id === paymentId);
+  const payment = pmt ? (pmt as Payment) : (USE_MOCK_DATA ? MOCK_PAYMENTS.find((p) => p.id === paymentId) : undefined);
   if (!payment) return { success: false, error: 'Payment not found' };
   if (payment.status !== 'pending') return { success: false, error: 'Payment is not pending' };
 
   if (pmt) {
     await supabase.from('payments').update({ status: 'rejected', approved_by: approvedBy, notes: reason || 'Rejected by finance' }).eq('id', paymentId);
   }
-  if (!pmt) {
+  if (!pmt && USE_MOCK_DATA) {
     const mockPmt = MOCK_PAYMENTS.find((p) => p.id === paymentId);
     if (mockPmt) { mockPmt.status = 'rejected'; mockPmt.approved_by = approvedBy; mockPmt.notes = reason || 'Rejected by finance'; }
   }
@@ -582,7 +613,8 @@ export async function getInventory(): Promise<InventoryItem[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('inventory').select('*').order('expiry_date');
   if (!error && data) return data as InventoryItem[];
-  return [...MOCK_INVENTORY];
+  if (USE_MOCK_DATA) return [...MOCK_INVENTORY];
+  return [];
 }
 
 /** Input shape for allocating stock from warehouse to a territory */
@@ -603,27 +635,29 @@ export async function allocateStock(input: AllocateStockInput): Promise<ServiceR
   if (!input.to_location_id) return { success: false, error: 'Please select a destination' };
   if (input.quantity <= 0) return { success: false, error: 'Quantity must be greater than 0' };
 
-  const sourceBatches = MOCK_INVENTORY
-    .filter((i) => i.product_id === input.product_id && i.location_id === input.from_location_id && i.quantity > 0)
-    .sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
-
-  if (sourceBatches.length === 0) return { success: false, error: 'No stock found for this product at the source location' };
-
-  const totalAvailable = sourceBatches.reduce((sum, b) => sum + b.quantity, 0);
-  if (totalAvailable < input.quantity) {
-    return { success: false, error: `Insufficient stock. Available: ${totalAvailable} units across ${sourceBatches.length} batch(es)` };
-  }
-
-  let toDeduct = input.quantity;
   let lastExpiry = '';
-  for (const batch of sourceBatches) {
-    if (toDeduct <= 0) break;
-    const taken = Math.min(batch.quantity, toDeduct);
-    batch.quantity -= taken;
-    toDeduct -= taken;
-    if (batch.quantity === 0) batch.status = 'out_of_stock';
-    else if (batch.quantity <= 50) batch.status = 'low_stock';
-    lastExpiry = batch.expiry_date;
+  if (USE_MOCK_DATA) {
+    const sourceBatches = MOCK_INVENTORY
+      .filter((i) => i.product_id === input.product_id && i.location_id === input.from_location_id && i.quantity > 0)
+      .sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
+
+    if (sourceBatches.length === 0) return { success: false, error: 'No stock found for this product at the source location' };
+
+    const totalAvailable = sourceBatches.reduce((sum, b) => sum + b.quantity, 0);
+    if (totalAvailable < input.quantity) {
+      return { success: false, error: `Insufficient stock. Available: ${totalAvailable} units across ${sourceBatches.length} batch(es)` };
+    }
+
+    let toDeduct = input.quantity;
+    for (const batch of sourceBatches) {
+      if (toDeduct <= 0) break;
+      const taken = Math.min(batch.quantity, toDeduct);
+      batch.quantity -= taken;
+      toDeduct -= taken;
+      if (batch.quantity === 0) batch.status = 'out_of_stock';
+      else if (batch.quantity <= 50) batch.status = 'low_stock';
+      lastExpiry = batch.expiry_date;
+    }
   }
 
   const supabase = getSupabase();
@@ -636,15 +670,17 @@ export async function allocateStock(input: AllocateStockInput): Promise<ServiceR
     status: 'in_stock',
   });
 
-  MOCK_INVENTORY.push({
-    id: generateId(),
-    product_id: input.product_id,
-    location_id: input.to_location_id,
-    quantity: input.quantity,
-    batch_number: `ALLOC-${new Date().toISOString().slice(0, 10)}`,
-    expiry_date: lastExpiry,
-    status: 'in_stock',
-  });
+  if (USE_MOCK_DATA) {
+    MOCK_INVENTORY.push({
+      id: generateId(),
+      product_id: input.product_id,
+      location_id: input.to_location_id,
+      quantity: input.quantity,
+      batch_number: `ALLOC-${new Date().toISOString().slice(0, 10)}`,
+      expiry_date: lastExpiry,
+      status: 'in_stock',
+    });
+  }
   return { success: true };
 }
 
@@ -659,7 +695,7 @@ export interface StockTakeInput {
 export async function stockTake(input: StockTakeInput): Promise<ServiceResponse<{ item: InventoryItem; difference: number; notes?: string }>> {
   const supabase = getSupabase();
   const { data: invData } = await supabase.from('inventory').select('*').eq('id', input.inventory_id).single();
-  const item = invData ? (invData as InventoryItem) : MOCK_INVENTORY.find((i) => i.id === input.inventory_id);
+  const item = invData ? (invData as InventoryItem) : (USE_MOCK_DATA ? MOCK_INVENTORY.find((i) => i.id === input.inventory_id) : undefined);
   if (!item) return { success: false, error: 'Inventory item not found' };
   if (input.actual_quantity < 0) return { success: false, error: 'Quantity cannot be negative' };
 
@@ -670,6 +706,15 @@ export async function stockTake(input: StockTakeInput): Promise<ServiceResponse<
   if (invData) {
     await supabase.from('inventory').update({ quantity: input.actual_quantity, status: item.status }).eq('id', input.inventory_id);
   }
+
+  await supabase.from('stock_movements').insert({
+    product_id: item.product_id,
+    quantity: difference,
+    movement_type: 'adjustment',
+    reference_id: input.inventory_id,
+    notes: input.notes || `Stock take: ${item.quantity} → ${input.actual_quantity}`,
+  });
+
   return { success: true, data: { item, difference, notes: input.notes } };
 }
 
@@ -682,7 +727,8 @@ export async function getChatMessages(): Promise<ChatMessage[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('chat_messages').select('*').order('created_at');
   if (!error && data) return data as ChatMessage[];
-  return [...MOCK_CHAT_MESSAGES];
+  if (USE_MOCK_DATA) return [...MOCK_CHAT_MESSAGES];
+  return [];
 }
 
 /** Sends a new chat message (with optional attachment) */
@@ -716,7 +762,7 @@ export async function sendChatMessage(
     is_read: false,
     created_at: new Date().toISOString(),
   };
-  MOCK_CHAT_MESSAGES.push(newMessage);
+  if (USE_MOCK_DATA) MOCK_CHAT_MESSAGES.push(newMessage);
   return { success: true, data: newMessage };
 }
 
@@ -751,10 +797,12 @@ export async function addStaffUser(input: AddStaffUserInput): Promise<ServiceRes
 
   if (!error && data) return { success: true, data: data as User };
 
-  const existing = MOCK_USERS.find(
-    (u) => u.email.toLowerCase() === input.email.trim().toLowerCase()
-  );
-  if (existing) return { success: false, error: 'A user with this email already exists' };
+  if (USE_MOCK_DATA) {
+    const existing = MOCK_USERS.find(
+      (u) => u.email.toLowerCase() === input.email.trim().toLowerCase()
+    );
+    if (existing) return { success: false, error: 'A user with this email already exists' };
+  }
 
   const newUser: User = {
     id: generateId(),
@@ -767,7 +815,7 @@ export async function addStaffUser(input: AddStaffUserInput): Promise<ServiceRes
     created_at: new Date().toISOString(),
     is_active: true,
   };
-  MOCK_USERS.push(newUser);
+  if (USE_MOCK_DATA) MOCK_USERS.push(newUser);
   return { success: true, data: newUser };
 }
 
@@ -775,7 +823,7 @@ export async function addStaffUser(input: AddStaffUserInput): Promise<ServiceRes
 export async function toggleUserStatus(userId: string): Promise<ServiceResponse<User>> {
   const supabase = getSupabase();
   const { data: userData } = await supabase.from('profiles').select('*').eq('id', userId).single();
-  const user = userData ? (userData as User) : MOCK_USERS.find((u) => u.id === userId);
+  const user = userData ? (userData as User) : (USE_MOCK_DATA ? MOCK_USERS.find((u) => u.id === userId) : undefined);
   if (!user) return { success: false, error: 'User not found' };
   user.is_active = !user.is_active;
   if (userData) {
@@ -788,11 +836,11 @@ export async function toggleUserStatus(userId: string): Promise<ServiceResponse<
 export async function updateStaffUser(userId: string, input: Partial<AddStaffUserInput>): Promise<ServiceResponse<User>> {
   const supabase = getSupabase();
   const { data: userData } = await supabase.from('profiles').select('*').eq('id', userId).single();
-  const user = userData ? (userData as User) : MOCK_USERS.find((u) => u.id === userId);
+  const user = userData ? (userData as User) : (USE_MOCK_DATA ? MOCK_USERS.find((u) => u.id === userId) : undefined);
   if (!user) return { success: false, error: 'User not found' };
 
   if (userData) {
-    const updates: Record<string, any> = {};
+    const updates: Partial<User> = {};
     if (input.full_name !== undefined) updates.full_name = input.full_name.trim();
     if (input.email !== undefined) updates.email = input.email.trim().toLowerCase();
     if (input.role !== undefined) updates.role = input.role;
@@ -801,15 +849,17 @@ export async function updateStaffUser(userId: string, input: Partial<AddStaffUse
     await supabase.from('profiles').update(updates).eq('id', userId);
   }
 
-  if (input.full_name !== undefined) user.full_name = input.full_name.trim();
-  if (input.email !== undefined) {
-    const duplicate = MOCK_USERS.find((u) => u.email.toLowerCase() === input.email!.trim().toLowerCase() && u.id !== userId);
-    if (duplicate) return { success: false, error: 'A user with this email already exists' };
-    user.email = input.email.trim().toLowerCase();
+  if (USE_MOCK_DATA) {
+    if (input.full_name !== undefined) user.full_name = input.full_name.trim();
+    if (input.email !== undefined) {
+      const duplicate = MOCK_USERS.find((u) => u.email.toLowerCase() === input.email!.trim().toLowerCase() && u.id !== userId);
+      if (duplicate) return { success: false, error: 'A user with this email already exists' };
+      user.email = input.email.trim().toLowerCase();
+    }
+    if (input.role !== undefined) user.role = input.role;
+    if (input.location_id !== undefined) user.location_id = input.location_id || null;
+    if (input.phone !== undefined) user.phone = input.phone?.trim() || null;
   }
-  if (input.role !== undefined) user.role = input.role;
-  if (input.location_id !== undefined) user.location_id = input.location_id || null;
-  if (input.phone !== undefined) user.phone = input.phone?.trim() || null;
   return { success: true, data: user };
 }
 
@@ -833,11 +883,11 @@ export interface UpdateCustomerInput {
 export async function updateCustomer(customerId: string, input: UpdateCustomerInput): Promise<ServiceResponse<Customer>> {
   const supabase = getSupabase();
   const { data: custData } = await supabase.from('customers').select('*').eq('id', customerId).single();
-  const customer = custData ? (custData as Customer) : MOCK_CUSTOMERS.find((c) => c.id === customerId);
+  const customer = custData ? (custData as Customer) : (USE_MOCK_DATA ? MOCK_CUSTOMERS.find((c) => c.id === customerId) : undefined);
   if (!customer) return { success: false, error: 'Customer not found' };
 
   if (custData) {
-    const updates: Record<string, any> = {};
+    const updates: Partial<Customer> = {};
     if (input.name !== undefined) updates.name = input.name.trim();
     if (input.business_name !== undefined) updates.business_name = input.business_name.trim();
     if (input.phone !== undefined) updates.phone = input.phone.trim();
@@ -849,14 +899,16 @@ export async function updateCustomer(customerId: string, input: UpdateCustomerIn
     await supabase.from('customers').update(updates).eq('id', customerId);
   }
 
-  if (input.name !== undefined) customer.name = input.name.trim();
-  if (input.business_name !== undefined) customer.business_name = input.business_name.trim();
-  if (input.phone !== undefined) customer.phone = input.phone.trim();
-  if (input.email !== undefined) customer.email = input.email?.trim() || null;
-  if (input.address !== undefined) customer.address = input.address.trim();
-  if (input.state !== undefined) customer.state = input.state.trim();
-  if (input.credit_limit !== undefined) customer.credit_limit = input.credit_limit;
-  if (input.location_id !== undefined) customer.location_id = input.location_id;
+  if (USE_MOCK_DATA) {
+    if (input.name !== undefined) customer.name = input.name.trim();
+    if (input.business_name !== undefined) customer.business_name = input.business_name.trim();
+    if (input.phone !== undefined) customer.phone = input.phone.trim();
+    if (input.email !== undefined) customer.email = input.email?.trim() || null;
+    if (input.address !== undefined) customer.address = input.address.trim();
+    if (input.state !== undefined) customer.state = input.state.trim();
+    if (input.credit_limit !== undefined) customer.credit_limit = input.credit_limit;
+    if (input.location_id !== undefined) customer.location_id = input.location_id;
+  }
   return { success: true, data: customer };
 }
 
@@ -878,11 +930,11 @@ export interface UpdateProductInput {
 export async function updateProduct(productId: string, input: UpdateProductInput): Promise<ServiceResponse<Product>> {
   const supabase = getSupabase();
   const { data: prodData } = await supabase.from('products').select('*').eq('id', productId).single();
-  const product = prodData ? (prodData as Product) : MOCK_PRODUCTS.find((p) => p.id === productId);
+  const product = prodData ? (prodData as Product) : (USE_MOCK_DATA ? MOCK_PRODUCTS.find((p) => p.id === productId) : undefined);
   if (!product) return { success: false, error: 'Product not found' };
 
   if (prodData) {
-    const updates: Record<string, any> = {};
+    const updates: Partial<Product> = {};
     if (input.name !== undefined) updates.name = input.name.trim();
     if (input.sku !== undefined) updates.sku = input.sku.trim().toUpperCase();
     if (input.nafdac_number !== undefined) updates.nafdac_number = input.nafdac_number.trim();
@@ -892,16 +944,18 @@ export async function updateProduct(productId: string, input: UpdateProductInput
     await supabase.from('products').update(updates).eq('id', productId);
   }
 
-  if (input.name !== undefined) product.name = input.name.trim();
-  if (input.sku !== undefined) {
-    const dup = MOCK_PRODUCTS.find((p) => p.sku.toLowerCase() === input.sku!.trim().toLowerCase() && p.id !== productId);
-    if (dup) return { success: false, error: `SKU "${input.sku}" already exists` };
-    product.sku = input.sku.trim().toUpperCase();
+  if (USE_MOCK_DATA) {
+    if (input.name !== undefined) product.name = input.name.trim();
+    if (input.sku !== undefined) {
+      const dup = MOCK_PRODUCTS.find((p) => p.sku.toLowerCase() === input.sku!.trim().toLowerCase() && p.id !== productId);
+      if (dup) return { success: false, error: `SKU "${input.sku}" already exists` };
+      product.sku = input.sku.trim().toUpperCase();
+    }
+    if (input.nafdac_number !== undefined) product.nafdac_number = input.nafdac_number.trim();
+    if (input.unit_price !== undefined) product.unit_price = input.unit_price;
+    if (input.category !== undefined) product.category = input.category.trim();
+    if (input.description !== undefined) product.description = input.description?.trim() || null;
   }
-  if (input.nafdac_number !== undefined) product.nafdac_number = input.nafdac_number.trim();
-  if (input.unit_price !== undefined) product.unit_price = input.unit_price;
-  if (input.category !== undefined) product.category = input.category.trim();
-  if (input.description !== undefined) product.description = input.description?.trim() || null;
   return { success: true, data: product };
 }
 
@@ -914,7 +968,8 @@ export async function getSalaryGrades(): Promise<SalaryGrade[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('salary_grades').select('*').order('grade');
   if (!error && data) return data as SalaryGrade[];
-  return [...MOCK_SALARY_GRADES];
+  if (USE_MOCK_DATA) return [...MOCK_SALARY_GRADES];
+  return [];
 }
 
 /** Input for creating/updating a salary grade */
@@ -945,8 +1000,10 @@ export async function addSalaryGrade(input: AddSalaryGradeInput): Promise<Servic
 
   if (!error && data) return { success: true, data: data as SalaryGrade };
 
-  const duplicate = MOCK_SALARY_GRADES.find((sg) => sg.grade.toLowerCase() === input.grade.trim().toLowerCase());
-  if (duplicate) return { success: false, error: `Grade "${input.grade}" already exists` };
+  if (USE_MOCK_DATA) {
+    const duplicate = MOCK_SALARY_GRADES.find((sg) => sg.grade.toLowerCase() === input.grade.trim().toLowerCase());
+    if (duplicate) return { success: false, error: `Grade "${input.grade}" already exists` };
+  }
 
   const newGrade: SalaryGrade = {
     id: generateId(),
@@ -958,7 +1015,7 @@ export async function addSalaryGrade(input: AddSalaryGradeInput): Promise<Servic
     medical_allowance_pct: input.medical_allowance_pct,
     created_at: new Date().toISOString(),
   };
-  MOCK_SALARY_GRADES.push(newGrade);
+  if (USE_MOCK_DATA) MOCK_SALARY_GRADES.push(newGrade);
   return { success: true, data: newGrade };
 }
 
@@ -971,12 +1028,17 @@ export async function getSalaries(): Promise<Salary[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('salaries').select('*');
   if (!error && data) return data as Salary[];
-  return [...MOCK_SALARIES];
+  if (USE_MOCK_DATA) return [...MOCK_SALARIES];
+  return [];
 }
 
 /** Returns the active salary for a specific user */
-export function getSalaryForUser(userId: string): Salary | undefined {
-  return MOCK_SALARIES.find((s) => s.user_id === userId && s.is_active);
+export async function getSalaryForUser(userId: string): Promise<Salary | undefined> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('salaries').select('*').eq('user_id', userId).eq('is_active', true).maybeSingle();
+  if (!error && data) return data as Salary;
+  if (USE_MOCK_DATA) return MOCK_SALARIES.find((s) => s.user_id === userId && s.is_active);
+  return undefined;
 }
 
 /** Input for assigning/updating a salary */
@@ -985,11 +1047,28 @@ export interface AssignSalaryInput {
   salary_grade_id: string;
   basic_salary: number;
   effective_date: string;
+  tax_deduction?: number;
+  loan_repayment?: number;
+  unmet_target_penalty?: number;
+  custom_deductions?: CustomPayrollAdjustment[];
+  custom_additions?: CustomPayrollAdjustment[];
 }
 
 /** Calculates allowances based on salary grade percentages */
-function calculateAllowances(basicSalary: number, gradeId: string): { housing: number; transport: number; medical: number } {
-  const grade = MOCK_SALARY_GRADES.find((sg) => sg.id === gradeId);
+async function calculateAllowances(basicSalary: number, gradeId: string): Promise<{ housing: number; transport: number; medical: number }> {
+  const grade = ((): SalaryGrade | undefined => {
+    if (USE_MOCK_DATA) return MOCK_SALARY_GRADES.find((sg) => sg.id === gradeId);
+    return undefined;
+  })();
+  if (!grade && !USE_MOCK_DATA) {
+    const supabase = getSupabase();
+    const { data } = await supabase.from('salary_grades').select('*').eq('id', gradeId).maybeSingle();
+    if (data) return {
+      housing: Math.round(basicSalary * ((data as SalaryGrade).housing_allowance_pct / 100)),
+      transport: Math.round(basicSalary * ((data as SalaryGrade).transport_allowance_pct / 100)),
+      medical: Math.round(basicSalary * ((data as SalaryGrade).medical_allowance_pct / 100)),
+    };
+  }
   if (!grade) return { housing: 0, transport: 0, medical: 0 };
   return {
     housing: Math.round(basicSalary * (grade.housing_allowance_pct / 100)),
@@ -1014,25 +1093,42 @@ export async function assignSalary(input: AssignSalaryInput): Promise<ServiceRes
   if (!input.salary_grade_id) return { success: false, error: 'Salary grade is required' };
   if (input.basic_salary <= 0) return { success: false, error: 'Basic salary must be greater than 0' };
 
-  const user = MOCK_USERS.find((u) => u.id === input.user_id);
-  if (!user) return { success: false, error: 'User not found' };
+  if (USE_MOCK_DATA) {
+    const user = MOCK_USERS.find((u) => u.id === input.user_id);
+    if (!user) return { success: false, error: 'User not found' };
 
-  const grade = MOCK_SALARY_GRADES.find((sg) => sg.id === input.salary_grade_id);
-  if (!grade) return { success: false, error: 'Salary grade not found' };
+    const grade = MOCK_SALARY_GRADES.find((sg) => sg.id === input.salary_grade_id);
+    if (!grade) return { success: false, error: 'Salary grade not found' };
 
-  MOCK_SALARIES.forEach((s) => {
-    if (s.user_id === input.user_id && s.is_active) s.is_active = false;
-  });
+    MOCK_SALARIES.forEach((s) => {
+      if (s.user_id === input.user_id && s.is_active) s.is_active = false;
+    });
+  }
 
-  const allowances = calculateAllowances(input.basic_salary, input.salary_grade_id);
-  const totalGross = input.basic_salary + allowances.housing + allowances.transport + allowances.medical;
+  const customAdditionsList = (input.custom_additions || []).map((ca) => ({
+    ...ca,
+    amount: ca.type === 'percentage' ? Math.round(input.basic_salary * (ca.value / 100)) : ca.value,
+  }));
+  const totalCustomAdditions = customAdditionsList.reduce((sum, item) => sum + item.amount, 0);
+
+  const allowances = await calculateAllowances(input.basic_salary, input.salary_grade_id);
+  const totalGross = input.basic_salary + allowances.housing + allowances.transport + allowances.medical + totalCustomAdditions;
   const taxRate = 7.5;
   const pensionRate = 8.0;
   const nhisRate = 2.5;
-  const payeTax = calculatePAYE(totalGross);
+  const payeTax = (input.tax_deduction && input.tax_deduction > 0) ? input.tax_deduction : calculatePAYE(totalGross);
   const pensionDed = Math.round(totalGross * (pensionRate / 100));
   const nhisDed = Math.round(totalGross * (nhisRate / 100));
-  const totalDeductions = payeTax + pensionDed + nhisDed;
+  const loanRepayment = input.loan_repayment || 0;
+  const unmetTargetPenalty = input.unmet_target_penalty || 0;
+
+  const customDeductionsList = (input.custom_deductions || []).map((cd) => ({
+    ...cd,
+    amount: cd.type === 'percentage' ? Math.round(input.basic_salary * (cd.value / 100)) : cd.value,
+  }));
+  const totalCustomDeductions = customDeductionsList.reduce((sum, item) => sum + item.amount, 0);
+
+  const totalDeductions = payeTax + pensionDed + nhisDed + loanRepayment + unmetTargetPenalty + totalCustomDeductions;
   const netPay = totalGross - totalDeductions;
 
   const supabase = getSupabase();
@@ -1047,6 +1143,11 @@ export async function assignSalary(input: AssignSalaryInput): Promise<ServiceRes
     tax_rate: taxRate,
     pension_rate: pensionRate,
     nhis_rate: nhisRate,
+    tax_deduction: payeTax,
+    loan_repayment: loanRepayment,
+    unmet_target_penalty: unmetTargetPenalty,
+    custom_deductions: customDeductionsList,
+    custom_additions: customAdditionsList,
     total_deductions: totalDeductions,
     net_pay: netPay,
     effective_date: input.effective_date,
@@ -1067,6 +1168,11 @@ export async function assignSalary(input: AssignSalaryInput): Promise<ServiceRes
     tax_rate: taxRate,
     pension_rate: pensionRate,
     nhis_rate: nhisRate,
+    tax_deduction: payeTax,
+    loan_repayment: loanRepayment,
+    unmet_target_penalty: unmetTargetPenalty,
+    custom_deductions: customDeductionsList,
+    custom_additions: customAdditionsList,
     total_deductions: totalDeductions,
     net_pay: netPay,
     effective_date: input.effective_date,
@@ -1074,7 +1180,7 @@ export async function assignSalary(input: AssignSalaryInput): Promise<ServiceRes
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  MOCK_SALARIES.push(newSalary);
+  if (USE_MOCK_DATA) MOCK_SALARIES.push(newSalary);
   return { success: true, data: newSalary };
 }
 
@@ -1087,22 +1193,35 @@ export async function getPayrollRuns(): Promise<PayrollRun[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('payroll_runs').select('*').order('created_at', { ascending: false });
   if (!error && data) return data as PayrollRun[];
-  return [...MOCK_PAYROLL_RUNS];
+  if (USE_MOCK_DATA) return [...MOCK_PAYROLL_RUNS];
+  return [];
 }
 
 /** Returns a single payroll run by ID */
-export function getPayrollRunById(id: string): PayrollRun | undefined {
-  return MOCK_PAYROLL_RUNS.find((pr) => pr.id === id);
+export async function getPayrollRunById(id: string): Promise<PayrollRun | undefined> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('payroll_runs').select('*').eq('id', id).maybeSingle();
+  if (!error && data) return data as PayrollRun;
+  if (USE_MOCK_DATA) return MOCK_PAYROLL_RUNS.find((pr) => pr.id === id);
+  return undefined;
 }
 
 /** Returns payslips for a given payroll run */
-export function getPayslipsForRun(payrollRunId: string): Payslip[] {
-  return MOCK_PAYSLIPS.filter((ps) => ps.payroll_run_id === payrollRunId);
+export async function getPayslipsForRun(payrollRunId: string): Promise<Payslip[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('payslips').select('*').eq('payroll_run_id', payrollRunId);
+  if (!error && data) return data as Payslip[];
+  if (USE_MOCK_DATA) return MOCK_PAYSLIPS.filter((ps) => ps.payroll_run_id === payrollRunId);
+  return [];
 }
 
 /** Returns payslips for a specific user */
-export function getPayslipsForUser(userId: string): Payslip[] {
-  return MOCK_PAYSLIPS.filter((ps) => ps.user_id === userId);
+export async function getPayslipsForUser(userId: string): Promise<Payslip[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('payslips').select('*').eq('user_id', userId);
+  if (!error && data) return data as Payslip[];
+  if (USE_MOCK_DATA) return MOCK_PAYSLIPS.filter((ps) => ps.user_id === userId);
+  return [];
 }
 
 /** Processes payroll for all active employees for a given period */
@@ -1112,23 +1231,52 @@ export async function processPayroll(
   paymentDate: string,
   processedBy: string
 ): Promise<ServiceResponse<PayrollRun>> {
-  const activeSalaries = MOCK_SALARIES.filter((s) => s.is_active);
-  if (activeSalaries.length === 0) return { success: false, error: 'No active salaries found to process' };
+  const supabase = getSupabase();
 
-  const existingRun = MOCK_PAYROLL_RUNS.find(
-    (pr) => pr.period_start === periodStart && pr.period_end === periodEnd && pr.status !== 'cancelled'
-  );
+  let activeSalaries: Salary[];
+  let existingRun: PayrollRun | undefined;
+
+  if (USE_MOCK_DATA) {
+    activeSalaries = MOCK_SALARIES.filter((s) => s.is_active);
+    existingRun = MOCK_PAYROLL_RUNS.find(
+      (pr) => pr.period_start === periodStart && pr.period_end === periodEnd && pr.status !== 'cancelled'
+    );
+  } else {
+    const { data: salData, error: salError } = await supabase.from('salaries').select('*').eq('is_active', true);
+    if (salError || !salData) return { success: false, error: 'Could not fetch active salaries. Please try again.' };
+    activeSalaries = salData as Salary[];
+    const { data: runData } = await supabase.from('payroll_runs')
+      .select('*').eq('period_start', periodStart).eq('period_end', periodEnd).neq('status', 'cancelled').maybeSingle();
+    existingRun = (runData as PayrollRun) || undefined;
+  }
+
+  if (activeSalaries.length === 0) return { success: false, error: 'No active salaries found to process' };
   if (existingRun) return { success: false, error: `Payroll for ${periodStart} to ${periodEnd} already exists (status: ${existingRun.status})` };
 
   const payslips: Payslip[] = [];
   let totalGross = 0, totalDeductions = 0, totalNet = 0;
 
   for (const salary of activeSalaries) {
-    const tg = salary.basic_salary + salary.housing_allowance + salary.transport_allowance + salary.medical_allowance;
-    const payeTax = calculatePAYE(tg);
+    const customAdditionsList = (salary.custom_additions || []).map((ca) => ({
+      ...ca,
+      amount: ca.type === 'percentage' ? Math.round(salary.basic_salary * (ca.value / 100)) : ca.value,
+    }));
+    const totalCustomAdditions = customAdditionsList.reduce((sum, item) => sum + item.amount, 0);
+
+    const tg = salary.basic_salary + salary.housing_allowance + salary.transport_allowance + salary.medical_allowance + totalCustomAdditions;
+    const payeTax = (salary.tax_deduction && salary.tax_deduction > 0) ? salary.tax_deduction : calculatePAYE(tg);
     const pensionDed = Math.round(tg * (salary.pension_rate / 100));
     const nhisDed = Math.round(tg * (salary.nhis_rate / 100));
-    const td = payeTax + pensionDed + nhisDed;
+    const loanRepayment = salary.loan_repayment || 0;
+    const unmetTargetPenalty = salary.unmet_target_penalty || 0;
+
+    const customDeductionsList = (salary.custom_deductions || []).map((cd) => ({
+      ...cd,
+      amount: cd.type === 'percentage' ? Math.round(salary.basic_salary * (cd.value / 100)) : cd.value,
+    }));
+    const totalCustomDeductions = customDeductionsList.reduce((sum, item) => sum + item.amount, 0);
+
+    const td = payeTax + pensionDed + nhisDed + loanRepayment + unmetTargetPenalty + totalCustomDeductions;
     const np = tg - td;
 
     payslips.push({
@@ -1143,6 +1291,11 @@ export async function processPayroll(
       paye_tax: payeTax,
       pension_deduction: pensionDed,
       nhis_deduction: nhisDed,
+      tax_deduction: payeTax,
+      loan_repayment: loanRepayment,
+      unmet_target_penalty: unmetTargetPenalty,
+      custom_deductions: customDeductionsList,
+      custom_additions: customAdditionsList,
       total_deductions: td,
       net_pay: np,
       created_at: new Date().toISOString(),
@@ -1152,7 +1305,6 @@ export async function processPayroll(
     totalNet += np;
   }
 
-  const supabase = getSupabase();
   const { data: prData, error } = await supabase.from('payroll_runs').insert({
     period_start: periodStart,
     period_end: periodEnd,
@@ -1166,7 +1318,7 @@ export async function processPayroll(
   }).select().single();
 
   if (!error && prData) {
-    const runId = (prData as any).id;
+    const runId = prData.id;
     for (const ps of payslips) {
       await supabase.from('payslips').insert({ ...ps, id: undefined, payroll_run_id: runId, created_at: new Date().toISOString() });
     }
@@ -1189,8 +1341,10 @@ export async function processPayroll(
   };
 
   for (const ps of payslips) { ps.payroll_run_id = payrollRun.id; }
-  MOCK_PAYROLL_RUNS.push(payrollRun);
-  MOCK_PAYSLIPS.push(...payslips);
+  if (USE_MOCK_DATA) {
+    MOCK_PAYROLL_RUNS.push(payrollRun);
+    MOCK_PAYSLIPS.push(...payslips);
+  }
   return { success: true, data: payrollRun };
 }
 
@@ -1203,17 +1357,26 @@ export async function getLeaveRequests(): Promise<LeaveRequest[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('leave_requests').select('*').order('created_at', { ascending: false });
   if (!error && data) return data as LeaveRequest[];
-  return [...MOCK_LEAVE_REQUESTS];
+  if (USE_MOCK_DATA) return [...MOCK_LEAVE_REQUESTS];
+  return [];
 }
 
 /** Returns leave requests for a specific user */
-export function getLeaveRequestsForUser(userId: string): LeaveRequest[] {
-  return MOCK_LEAVE_REQUESTS.filter((lr) => lr.user_id === userId);
+export async function getLeaveRequestsForUser(userId: string): Promise<LeaveRequest[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('leave_requests').select('*').eq('user_id', userId);
+  if (!error && data) return data as LeaveRequest[];
+  if (USE_MOCK_DATA) return MOCK_LEAVE_REQUESTS.filter((lr) => lr.user_id === userId);
+  return [];
 }
 
 /** Returns leave balances for a specific user */
-export function getLeaveBalancesForUser(userId: string): LeaveBalance[] {
-  return MOCK_LEAVE_BALANCES.filter((lb) => lb.user_id === userId);
+export async function getLeaveBalancesForUser(userId: string): Promise<LeaveBalance[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('leave_balances').select('*').eq('user_id', userId);
+  if (!error && data) return data as LeaveBalance[];
+  if (USE_MOCK_DATA) return MOCK_LEAVE_BALANCES.filter((lb) => lb.user_id === userId);
+  return [];
 }
 
 /** Input for submitting a leave request */
@@ -1238,21 +1401,25 @@ export async function submitLeaveRequest(input: SubmitLeaveInput): Promise<Servi
   const diffTime = Math.abs(end.getTime() - start.getTime());
   const durationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
-  const year = start.getFullYear();
-  const balance = MOCK_LEAVE_BALANCES.find(
-    (lb) => lb.user_id === input.user_id && lb.leave_type === input.leave_type && lb.year === year
-  );
-  if (balance && durationDays > balance.remaining_days) {
-    return { success: false, error: `Insufficient leave balance. Only ${balance.remaining_days} ${input.leave_type} day(s) remaining.` };
+  if (USE_MOCK_DATA) {
+    const year = start.getFullYear();
+    const balance = MOCK_LEAVE_BALANCES.find(
+      (lb) => lb.user_id === input.user_id && lb.leave_type === input.leave_type && lb.year === year
+    );
+    if (balance && durationDays > balance.remaining_days) {
+      return { success: false, error: `Insufficient leave balance. Only ${balance.remaining_days} ${input.leave_type} day(s) remaining.` };
+    }
   }
 
-  const overlapping = MOCK_LEAVE_REQUESTS.find((lr) => {
+  if (USE_MOCK_DATA) {
+    const overlapping = MOCK_LEAVE_REQUESTS.find((lr) => {
     if (lr.user_id !== input.user_id || lr.status === 'cancelled') return false;
     const lrStart = new Date(lr.start_date);
     const lrEnd = new Date(lr.end_date);
     return start <= lrEnd && end >= lrStart;
   });
-  if (overlapping) return { success: false, error: 'You already have a leave request overlapping with these dates' };
+    if (overlapping) return { success: false, error: 'You already have a leave request overlapping with these dates' };
+  }
 
   const supabase = getSupabase();
   const { data, error } = await supabase.from('leave_requests').insert({
@@ -1282,7 +1449,7 @@ export async function submitLeaveRequest(input: SubmitLeaveInput): Promise<Servi
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  MOCK_LEAVE_REQUESTS.push(newRequest);
+  if (USE_MOCK_DATA) MOCK_LEAVE_REQUESTS.push(newRequest);
   return { success: true, data: newRequest };
 }
 
@@ -1295,7 +1462,7 @@ export async function reviewLeaveRequest(
 ): Promise<ServiceResponse<LeaveRequest>> {
   const supabase = getSupabase();
   const { data: lrData } = await supabase.from('leave_requests').select('*').eq('id', leaveRequestId).single();
-  const leaveRequest = lrData ? (lrData as LeaveRequest) : MOCK_LEAVE_REQUESTS.find((lr) => lr.id === leaveRequestId);
+  const leaveRequest = lrData ? (lrData as LeaveRequest) : (USE_MOCK_DATA ? MOCK_LEAVE_REQUESTS.find((lr) => lr.id === leaveRequestId) : undefined);
   if (!leaveRequest) return { success: false, error: 'Leave request not found' };
   if (leaveRequest.status !== 'pending') return { success: false, error: `Leave request is already ${leaveRequest.status}` };
 
@@ -1308,13 +1475,15 @@ export async function reviewLeaveRequest(
     }).eq('id', leaveRequestId);
   }
 
-  leaveRequest.status = newStatus;
-  leaveRequest.approved_by = reviewerId;
-  leaveRequest.reviewed_at = new Date().toISOString();
-  leaveRequest.reviewer_notes = reviewerNotes?.trim() || null;
-  leaveRequest.updated_at = new Date().toISOString();
+  if (USE_MOCK_DATA) {
+    leaveRequest.status = newStatus;
+    leaveRequest.approved_by = reviewerId;
+    leaveRequest.reviewed_at = new Date().toISOString();
+    leaveRequest.reviewer_notes = reviewerNotes?.trim() || null;
+    leaveRequest.updated_at = new Date().toISOString();
+  }
 
-  if (newStatus === 'approved') {
+  if (newStatus === 'approved' && USE_MOCK_DATA) {
     const year = new Date(leaveRequest.start_date).getFullYear();
     const balance = MOCK_LEAVE_BALANCES.find(
       (lb) => lb.user_id === leaveRequest.user_id && lb.leave_type === leaveRequest.leave_type && lb.year === year
@@ -1331,7 +1500,7 @@ export async function reviewLeaveRequest(
 export async function cancelLeaveRequest(leaveRequestId: string, userId: string): Promise<ServiceResponse<LeaveRequest>> {
   const supabase = getSupabase();
   const { data: lrData } = await supabase.from('leave_requests').select('*').eq('id', leaveRequestId).single();
-  const leaveRequest = lrData ? (lrData as LeaveRequest) : MOCK_LEAVE_REQUESTS.find((lr) => lr.id === leaveRequestId);
+  const leaveRequest = lrData ? (lrData as LeaveRequest) : (USE_MOCK_DATA ? MOCK_LEAVE_REQUESTS.find((lr) => lr.id === leaveRequestId) : undefined);
   if (!leaveRequest) return { success: false, error: 'Leave request not found' };
   if (leaveRequest.status !== 'pending') return { success: false, error: 'Only pending requests can be cancelled' };
   if (leaveRequest.user_id !== userId) return { success: false, error: 'You can only cancel your own leave requests' };
@@ -1339,8 +1508,10 @@ export async function cancelLeaveRequest(leaveRequestId: string, userId: string)
   if (lrData) {
     await supabase.from('leave_requests').update({ status: 'cancelled' }).eq('id', leaveRequestId);
   }
-  leaveRequest.status = 'cancelled';
-  leaveRequest.updated_at = new Date().toISOString();
+  if (USE_MOCK_DATA) {
+    leaveRequest.status = 'cancelled';
+    leaveRequest.updated_at = new Date().toISOString();
+  }
   return { success: true, data: leaveRequest };
 }
 
@@ -1353,17 +1524,26 @@ export async function getAttendanceLogs(): Promise<AttendanceLog[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('attendance_logs').select('*').order('date', { ascending: false });
   if (!error && data) return data as AttendanceLog[];
-  return [...MOCK_ATTENDANCE_LOGS];
+  if (USE_MOCK_DATA) return [...MOCK_ATTENDANCE_LOGS];
+  return [];
 }
 
 /** Returns attendance logs for a specific user */
-export function getAttendanceLogsForUser(userId: string): AttendanceLog[] {
-  return MOCK_ATTENDANCE_LOGS.filter((a) => a.user_id === userId);
+export async function getAttendanceLogsForUser(userId: string): Promise<AttendanceLog[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('attendance_logs').select('*').eq('user_id', userId).order('date', { ascending: false });
+  if (!error && data) return data as AttendanceLog[];
+  if (USE_MOCK_DATA) return MOCK_ATTENDANCE_LOGS.filter((a) => a.user_id === userId);
+  return [];
 }
 
 /** Returns attendance for a specific user on a specific date */
-export function getAttendanceForDate(userId: string, date: string): AttendanceLog | undefined {
-  return MOCK_ATTENDANCE_LOGS.find((a) => a.user_id === userId && a.date === date);
+export async function getAttendanceForDate(userId: string, date: string): Promise<AttendanceLog | undefined> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('attendance_logs').select('*').eq('user_id', userId).eq('date', date).maybeSingle();
+  if (!error && data) return data as AttendanceLog;
+  if (USE_MOCK_DATA) return MOCK_ATTENDANCE_LOGS.find((a) => a.user_id === userId && a.date === date);
+  return undefined;
 }
 
 /** Clocks in a user for the current date */
@@ -1386,13 +1566,15 @@ export async function clockIn(userId: string): Promise<ServiceResponse<Attendanc
 
   if (!error && data) return { success: true, data: data as AttendanceLog };
 
-  const existing = MOCK_ATTENDANCE_LOGS.find((a) => a.user_id === userId && a.date === today);
-  if (existing) {
-    if (existing.clock_in) return { success: false, error: 'Already clocked in today' };
-    existing.clock_in = now.toISOString();
-    existing.status = 'present';
-    existing.updated_at = now.toISOString();
-    return { success: true, data: existing };
+  if (USE_MOCK_DATA) {
+    const existing = MOCK_ATTENDANCE_LOGS.find((a) => a.user_id === userId && a.date === today);
+    if (existing) {
+      if (existing.clock_in) return { success: false, error: 'Already clocked in today' };
+      existing.clock_in = now.toISOString();
+      existing.status = 'present';
+      existing.updated_at = now.toISOString();
+      return { success: true, data: existing };
+    }
   }
 
   const newLog: AttendanceLog = {
@@ -1407,7 +1589,7 @@ export async function clockIn(userId: string): Promise<ServiceResponse<Attendanc
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
   };
-  MOCK_ATTENDANCE_LOGS.push(newLog);
+  if (USE_MOCK_DATA) MOCK_ATTENDANCE_LOGS.push(newLog);
   return { success: true, data: newLog };
 }
 
@@ -1433,18 +1615,21 @@ export async function clockOut(userId: string): Promise<ServiceResponse<Attendan
     return { success: true, data: { ...log, clock_out: now.toISOString(), hours_worked: hoursWorked } as AttendanceLog };
   }
 
-  const log = MOCK_ATTENDANCE_LOGS.find((a) => a.user_id === userId && a.date === today);
-  if (!log) return { success: false, error: 'No clock-in record found for today. Please clock in first.' };
-  if (log.clock_out) return { success: false, error: 'Already clocked out today' };
+  if (USE_MOCK_DATA) {
+    const log = MOCK_ATTENDANCE_LOGS.find((a) => a.user_id === userId && a.date === today);
+    if (!log) return { success: false, error: 'No clock-in record found for today. Please clock in first.' };
+    if (log.clock_out) return { success: false, error: 'Already clocked out today' };
 
-  log.clock_out = now.toISOString();
-  log.updated_at = now.toISOString();
-  if (log.clock_in) {
-    const startTime = new Date(log.clock_in).getTime();
-    const endTime = now.getTime();
-    log.hours_worked = Math.round(((endTime - startTime) / (1000 * 60 * 60)) * 100) / 100;
+    log.clock_out = now.toISOString();
+    log.updated_at = now.toISOString();
+    if (log.clock_in) {
+      const startTime = new Date(log.clock_in).getTime();
+      const endTime = now.getTime();
+      log.hours_worked = Math.round(((endTime - startTime) / (1000 * 60 * 60)) * 100) / 100;
+    }
+    return { success: true, data: log };
   }
-  return { success: true, data: log };
+  return { success: false, error: 'No clock-in record found for today. Please clock in first.' };
 }
 
 /* ============================================================
@@ -1456,12 +1641,17 @@ export async function getEmployeeDocuments(): Promise<EmployeeDocument[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('employee_documents').select('*').order('created_at', { ascending: false });
   if (!error && data) return data as EmployeeDocument[];
-  return [...MOCK_EMPLOYEE_DOCUMENTS];
+  if (USE_MOCK_DATA) return [...MOCK_EMPLOYEE_DOCUMENTS];
+  return [];
 }
 
 /** Returns documents for a specific user */
-export function getDocumentsForUser(userId: string): EmployeeDocument[] {
-  return MOCK_EMPLOYEE_DOCUMENTS.filter((d) => d.user_id === userId);
+export async function getDocumentsForUser(userId: string): Promise<EmployeeDocument[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('employee_documents').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+  if (!error && data) return data as EmployeeDocument[];
+  if (USE_MOCK_DATA) return MOCK_EMPLOYEE_DOCUMENTS.filter((d) => d.user_id === userId);
+  return [];
 }
 
 /** Input for uploading an employee document */
@@ -1510,7 +1700,7 @@ export async function addEmployeeDocument(input: UploadDocumentInput): Promise<S
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  MOCK_EMPLOYEE_DOCUMENTS.push(newDoc);
+  if (USE_MOCK_DATA) MOCK_EMPLOYEE_DOCUMENTS.push(newDoc);
   return { success: true, data: newDoc };
 }
 
@@ -1518,16 +1708,18 @@ export async function addEmployeeDocument(input: UploadDocumentInput): Promise<S
 export async function verifyDocument(documentId: string, verifiedBy: string): Promise<ServiceResponse<EmployeeDocument>> {
   const supabase = getSupabase();
   const { data: docData } = await supabase.from('employee_documents').select('*').eq('id', documentId).single();
-  const doc = docData ? (docData as EmployeeDocument) : MOCK_EMPLOYEE_DOCUMENTS.find((d) => d.id === documentId);
+  const doc = docData ? (docData as EmployeeDocument) : (USE_MOCK_DATA ? MOCK_EMPLOYEE_DOCUMENTS.find((d) => d.id === documentId) : undefined);
   if (!doc) return { success: false, error: 'Document not found' };
   if (doc.is_verified) return { success: false, error: 'Document is already verified' };
 
   if (docData) {
     await supabase.from('employee_documents').update({ is_verified: true, verified_by: verifiedBy }).eq('id', documentId);
   }
-  doc.is_verified = true;
-  doc.verified_by = verifiedBy;
-  doc.updated_at = new Date().toISOString();
+  if (USE_MOCK_DATA) {
+    doc.is_verified = true;
+    doc.verified_by = verifiedBy;
+    doc.updated_at = new Date().toISOString();
+  }
   return { success: true, data: doc };
 }
 
@@ -1540,12 +1732,17 @@ export async function getPerformanceTargets(): Promise<PerformanceTarget[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('performance_targets').select('*').order('created_at', { ascending: false });
   if (!error && data) return data as PerformanceTarget[];
-  return [...MOCK_PERFORMANCE_TARGETS];
+  if (USE_MOCK_DATA) return [...MOCK_PERFORMANCE_TARGETS];
+  return [];
 }
 
 /** Returns performance targets for a specific user */
-export function getPerformanceTargetsForUser(userId: string): PerformanceTarget[] {
-  return MOCK_PERFORMANCE_TARGETS.filter((t) => t.user_id === userId);
+export async function getPerformanceTargetsForUser(userId: string): Promise<PerformanceTarget[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('performance_targets').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+  if (!error && data) return data as PerformanceTarget[];
+  if (USE_MOCK_DATA) return MOCK_PERFORMANCE_TARGETS.filter((t) => t.user_id === userId);
+  return [];
 }
 
 /** Input for setting a performance target */
@@ -1603,7 +1800,7 @@ export async function setPerformanceTarget(input: SetTargetInput): Promise<Servi
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  MOCK_PERFORMANCE_TARGETS.push(newTarget);
+  if (USE_MOCK_DATA) MOCK_PERFORMANCE_TARGETS.push(newTarget);
   return { success: true, data: newTarget };
 }
 
@@ -1616,25 +1813,31 @@ export async function updateTargetProgress(
 ): Promise<ServiceResponse<PerformanceTarget>> {
   const supabase = getSupabase();
   const { data: tgtData } = await supabase.from('performance_targets').select('*').eq('id', targetId).single();
-  const target = tgtData ? (tgtData as PerformanceTarget) : MOCK_PERFORMANCE_TARGETS.find((t) => t.id === targetId);
+  const target = tgtData ? (tgtData as PerformanceTarget) : (USE_MOCK_DATA ? MOCK_PERFORMANCE_TARGETS.find((t) => t.id === targetId) : undefined);
   if (!target) return { success: false, error: 'Performance target not found' };
   if (target.status === 'achieved' || target.status === 'cancelled') {
     return { success: false, error: `Target is already ${target.status}` };
   }
 
-  target.actual_sales = actualSales;
-  target.actual_collection = actualCollection;
-  target.new_customers_actual = newCustomersActual;
-  target.updated_at = new Date().toISOString();
+  if (USE_MOCK_DATA) {
+    target.actual_sales = actualSales;
+    target.actual_collection = actualCollection;
+    target.new_customers_actual = newCustomersActual;
+    target.updated_at = new Date().toISOString();
+  }
 
   const salesMet = actualSales >= target.sales_target;
   const collectionMet = actualCollection >= target.collection_target;
   const customersMet = newCustomersActual >= target.new_customers_target;
   const periodEnded = new Date(target.period_end) < new Date();
+  let newStatus: TargetStatus;
   if (periodEnded) {
-    target.status = salesMet && collectionMet && customersMet ? 'achieved' : 'missed';
+    newStatus = salesMet && collectionMet && customersMet ? 'achieved' : 'missed';
   } else {
-    target.status = 'active';
+    newStatus = 'active';
+  }
+  if (USE_MOCK_DATA) {
+    target.status = newStatus;
   }
 
   if (tgtData) {
@@ -1642,15 +1845,19 @@ export async function updateTargetProgress(
       actual_sales: actualSales,
       actual_collection: actualCollection,
       new_customers_actual: newCustomersActual,
-      status: target.status,
+      status: newStatus,
     }).eq('id', targetId);
   }
   return { success: true, data: target };
 }
 
 /** Returns performance reviews for a specific user */
-export function getPerformanceReviewsForUser(userId: string): PerformanceReview[] {
-  return MOCK_PERFORMANCE_REVIEWS.filter((r) => r.user_id === userId);
+export async function getPerformanceReviewsForUser(userId: string): Promise<PerformanceReview[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('performance_reviews').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+  if (!error && data) return data as PerformanceReview[];
+  if (USE_MOCK_DATA) return MOCK_PERFORMANCE_REVIEWS.filter((r) => r.user_id === userId);
+  return [];
 }
 
 /* ============================================================
@@ -1699,9 +1906,9 @@ export async function addPatient(input: AddPatientInput): Promise<ServiceRespons
     id: generateId(),
     owner_id: input.owner_id,
     name: input.name.trim(),
-    species: input.species as any,
+    species: input.species as Species,
     breed: input.breed || null,
-    gender: input.gender as any,
+    gender: input.gender as PetGender,
     date_of_birth: input.date_of_birth || null,
     age_years: null,
     age_months: null,
@@ -1711,11 +1918,12 @@ export async function addPatient(input: AddPatientInput): Promise<ServiceRespons
     spayed_neutered: input.spayed_neutered || false,
     allergies: input.allergies || null,
     medical_notes: input.medical_notes || null,
+    location_id: null,
     is_active: true,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  MOCK_PATIENTS.push(newPatient);
+  if (USE_MOCK_DATA) MOCK_PATIENTS.push(newPatient);
   return { success: true, data: newPatient };
 }
 
@@ -1723,11 +1931,16 @@ export async function getPatients(): Promise<Patient[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('patients').select('*').order('name');
   if (!error && data) return data as Patient[];
-  return [...MOCK_PATIENTS];
+  if (USE_MOCK_DATA) return [...MOCK_PATIENTS];
+  return [];
 }
 
-export function getPatientById(id: string): Patient | undefined {
-  return MOCK_PATIENTS.find((p) => p.id === id);
+export async function getPatientById(id: string): Promise<Patient | undefined> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('patients').select('*').eq('id', id).maybeSingle();
+  if (!error && data) return data as Patient;
+  if (USE_MOCK_DATA) return MOCK_PATIENTS.find((p) => p.id === id);
+  return undefined;
 }
 
 export interface AddAppointmentInput {
@@ -1775,7 +1988,7 @@ export async function addAppointment(input: AddAppointmentInput): Promise<Servic
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  MOCK_APPOINTMENTS.push(newAppt);
+  if (USE_MOCK_DATA) MOCK_APPOINTMENTS.push(newAppt);
   return { success: true, data: newAppt };
 }
 
@@ -1783,20 +1996,23 @@ export async function getAppointments(): Promise<Appointment[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('appointments').select('*').order('date');
   if (!error && data) return data as Appointment[];
-  return [...MOCK_APPOINTMENTS];
+  if (USE_MOCK_DATA) return [...MOCK_APPOINTMENTS];
+  return [];
 }
 
 export async function updateAppointmentStatus(id: string, status: string): Promise<ServiceResponse> {
   const supabase = getSupabase();
   const { data: aptData } = await supabase.from('appointments').select('*').eq('id', id).single();
-  const appt = aptData ? (aptData as Appointment) : MOCK_APPOINTMENTS.find((a) => a.id === id);
+  const appt = aptData ? (aptData as Appointment) : (USE_MOCK_DATA ? MOCK_APPOINTMENTS.find((a) => a.id === id) : undefined);
   if (!appt) return { success: false, error: 'Appointment not found' };
 
   if (aptData) {
     await supabase.from('appointments').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
   }
-  appt.status = status as any;
-  appt.updated_at = new Date().toISOString();
+  if (USE_MOCK_DATA) {
+    appt.status = status as AppointmentStatus;
+    appt.updated_at = new Date().toISOString();
+  }
   return { success: true };
 }
 
@@ -1804,25 +2020,111 @@ export async function getQueue(): Promise<PatientQueue[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('patient_queue').select('*').order('created_at');
   if (!error && data) return data as PatientQueue[];
-  return [...MOCK_PATIENT_QUEUE];
+  if (USE_MOCK_DATA) return [...MOCK_PATIENT_QUEUE];
+  return [];
 }
 
 export async function getVetServices(): Promise<VetService[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('vet_services').select('*').order('name');
   if (!error && data) return data as VetService[];
-  return [...MOCK_VET_SERVICES];
+  if (USE_MOCK_DATA) return [...MOCK_VET_SERVICES];
+  return [];
 }
 
 export async function getTreatments(): Promise<Treatment[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('treatments').select('*').order('date', { ascending: false });
   if (!error && data) return data as Treatment[];
-  return [...MOCK_TREATMENTS];
+  if (USE_MOCK_DATA) return [...MOCK_TREATMENTS];
+  return [];
 }
 
-export function getTreatmentMedications(treatmentId: string): TreatmentMedication[] {
-  return MOCK_TREATMENT_MEDICATIONS.filter((m) => m.treatment_id === treatmentId);
+export async function getTreatmentMedications(treatmentId: string): Promise<TreatmentMedication[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('treatment_medications').select('*').eq('treatment_id', treatmentId);
+  if (!error && data) return data as TreatmentMedication[];
+  if (USE_MOCK_DATA) return MOCK_TREATMENT_MEDICATIONS.filter((m) => m.treatment_id === treatmentId);
+  return [];
+}
+
+/* ============================================================
+   18.5. BRANCH FINANCIAL INSIGHTS & EXPENSES
+   ============================================================ */
+
+export interface AddBranchExpenseInput {
+  location_id: string;
+  category: 'inventory_purchase' | 'utilities' | 'payroll' | 'maintenance' | 'rent' | 'equipment' | 'other';
+  amount: number;
+  description: string;
+  expense_date?: string;
+  recorded_by?: string;
+}
+
+export async function getBranchExpenses(locationId?: string): Promise<BranchExpense[]> {
+  const supabase = getSupabase();
+  let query = supabase.from('branch_expenses').select('*').order('expense_date', { ascending: false });
+  if (locationId) query = query.eq('location_id', locationId);
+  const { data, error } = await query;
+  if (!error && data) return data as BranchExpense[];
+  return [];
+}
+
+export async function addBranchExpense(input: AddBranchExpenseInput): Promise<ServiceResponse<BranchExpense>> {
+  if (!input.location_id) return { success: false, error: 'Location is required' };
+  if (!input.amount || input.amount <= 0) return { success: false, error: 'Valid amount is required' };
+  if (!input.description.trim()) return { success: false, error: 'Description is required' };
+
+  const supabase = getSupabase();
+  const expenseDate = input.expense_date || new Date().toISOString().slice(0, 10);
+  const { data, error } = await supabase.from('branch_expenses').insert({
+    location_id: input.location_id,
+    category: input.category,
+    amount: input.amount,
+    description: input.description.trim(),
+    expense_date: expenseDate,
+    recorded_by: input.recorded_by,
+  }).select().single();
+
+  if (!error && data) return { success: true, data: data as BranchExpense };
+  return { success: false, error: error?.message || 'Failed to record expense' };
+}
+
+export async function getBranchFinancialInsights(locationId: string): Promise<ServiceResponse<BranchFinancialInsights>> {
+  const supabase = getSupabase();
+  const { data: loc } = await supabase.from('locations').select('*').eq('id', locationId).maybeSingle();
+  const locName = loc ? loc.name : 'Branch';
+  const locType = loc ? loc.type : 'clinic';
+
+  const { data: invoices } = await supabase.from('invoices').select('total').eq('location_id', locationId).in('status', ['paid', 'partial']);
+  const totalInflow = (invoices || []).reduce((acc: number, inv: { total: number | null }) => acc + (inv.total || 0), 0);
+
+  const { data: expData } = await supabase.from('branch_expenses').select('category, amount').eq('location_id', locationId);
+  const expenses = expData || [];
+  const totalExpenses = expenses.reduce((acc: number, e: { category: string; amount: number | null }) => acc + (e.amount || 0), 0);
+
+  const categoryMap: Record<string, number> = {};
+  expenses.forEach((e: { category: string; amount: number | null }) => {
+    categoryMap[e.category] = (categoryMap[e.category] || 0) + (e.amount || 0);
+  });
+
+  const expensesBreakdown = Object.entries(categoryMap).map(([category, amount]) => ({ category, amount }));
+  const netMargin = totalInflow - totalExpenses;
+  const profitabilityRate = totalInflow > 0 ? Math.round((netMargin / totalInflow) * 100) : 0;
+
+  return {
+    success: true,
+    data: {
+      location_id: locationId,
+      location_name: locName,
+      location_type: locType,
+      total_inflow: totalInflow,
+      total_expenditure: totalExpenses,
+      expenses_breakdown: expensesBreakdown,
+      net_margin: netMargin,
+      profitability_rate: profitabilityRate,
+    },
+  };
 }
 
 /* ============================================================

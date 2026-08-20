@@ -26,6 +26,13 @@
  */
 
 import { createBrowserClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getSupabaseConfig, isSupabaseMockMode } from './config';
+
+type QueryResult = { data: null; error: Error };
+type Chainable = {
+  then?: (resolve: (value: QueryResult) => void) => void;
+} & Record<string, (...args: unknown[]) => Chainable>;
 
 /**
  * Creates and returns a Supabase client configured for browser-side usage.
@@ -48,9 +55,46 @@ import { createBrowserClient } from '@supabase/ssr';
  * }
  * ```
  */
-export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+let browserClient: SupabaseClient | null = null;
+
+export function createClient(): SupabaseClient {
+  if (!isSupabaseMockMode()) {
+    if (!browserClient) {
+      const { url, anonKey } = getSupabaseConfig();
+      browserClient = createBrowserClient(url, anonKey);
+    }
+    return browserClient;
+  }
+
+  const chain: Chainable = new Proxy({}, {
+    get(_target, prop: string) {
+      if (prop === 'then') {
+        return (resolve: (value: QueryResult) => void) =>
+          resolve({ data: null, error: new Error('Supabase disabled') });
+      }
+      return () => chain;
+    },
+  });
+
+  const mockChannel = {
+    on: () => mockChannel,
+    subscribe: () => ({ unsubscribe: () => {} }),
+    unsubscribe: () => {},
+  };
+
+  browserClient = {
+    from: () => chain,
+    rpc: async () => ({ data: null, error: null }),
+    channel: () => mockChannel,
+    removeChannel: () => undefined,
+    auth: {
+      getUser: async () => ({ data: { user: null } }),
+      getSession: async () => ({ data: { session: null } }),
+      signInWithPassword: async () => ({ data: { user: null, session: null }, error: null }),
+      signUp: async () => ({ data: { user: null, session: null }, error: null }),
+      signOut: async () => ({ error: null }),
+    },
+  } as unknown as SupabaseClient;
+
+  return browserClient;
 }

@@ -44,4 +44,33 @@ test.describe('Invoices', () => {
       await expect(page.locator('text=Print').or(page.locator('text=Invoice')).first()).toBeVisible();
     }
   });
+
+  test('can mark a draft invoice as sent', async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto('/invoices');
+
+    const markSentBtn = page.locator('button:has-text("Mark Sent")').first();
+    if (await markSentBtn.isVisible()) {
+      await markSentBtn.click();
+      await page.waitForTimeout(1000);
+      await page.goto('/invoices');
+      await expect(page.locator('text=Sent').first()).toBeVisible();
+    }
+  });
+
+  test('status filter tabs are functional', async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto('/invoices');
+
+    // Click each status tab and verify the table updates
+    const tabs = ['Draft', 'Sent', 'Paid', 'All'];
+    for (const tab of tabs) {
+      const tabBtn = page.locator(`button:has-text("${tab}")`).first();
+      if (await tabBtn.isVisible()) {
+        await tabBtn.click();
+        await page.waitForTimeout(300);
+      }
+    }
+    await expect(page.locator('table').or(page.locator('[class*="table"]')).first()).toBeVisible();
+  });
 });

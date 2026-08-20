@@ -151,7 +151,7 @@ const EMPTY_FORM: AddProductInput = {
  *
  * @param product - Full `Product` object from the data service.
  */
-function ProductCard({ product, onEdit }: { product: Product; onEdit: (p: Product) => void }) {
+function ProductCard({ product, onEdit, isSalesRep }: { product: Product; onEdit: (p: Product) => void; isSalesRep?: boolean }) {
   return (
     <div className={styles.card}>
       {/* Decorative accent bar at the top of each card */}
@@ -188,7 +188,9 @@ function ProductCard({ product, onEdit }: { product: Product; onEdit: (p: Produc
           <span className={styles.priceCurrency}>₦</span>
           {formatNaira(product.unit_price)}
         </span>
-        <button className={styles.viewBtn} onClick={() => onEdit(product)}>Edit</button>
+        {!isSalesRep && (
+          <button className={styles.viewBtn} onClick={() => onEdit(product)}>Edit</button>
+        )}
       </div>
     </div>
   );
@@ -423,7 +425,7 @@ export default function ProductsPage() {
                 Show Deleted
               </label>
             )}
-            {!isCeo && (
+            {!isCeo && currentUser?.role !== 'sales_rep' && (
               <button className={styles.addBtn} onClick={openModal}>
                 <span>＋</span>
                 Add Product
@@ -452,7 +454,7 @@ export default function ProductsPage() {
             </div>
           ) : filtered.length > 0 ? (
             filtered.map((product) => (
-              <ProductCard key={product.id} product={product} onEdit={(p) => { setEditProduct(p); setEditForm({ name: p.name, sku: p.sku, nafdac_number: p.nafdac_number, unit_price: p.unit_price, category: p.category, description: p.description || '' }); }} />
+              <ProductCard key={product.id} product={product} onEdit={(p) => { setEditProduct(p); setEditForm({ name: p.name, sku: p.sku, nafdac_number: p.nafdac_number, unit_price: p.unit_price, category: p.category, description: p.description || '' }); }} isSalesRep={currentUser?.role === 'sales_rep'} />
             ))
           ) : (
             /* Empty state shown when no products match the search query */

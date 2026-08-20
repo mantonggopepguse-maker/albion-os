@@ -32,17 +32,9 @@
   gap: 12px;
 }
 
-.logoBox {
-  width: 48px;
+.logoImg {
   height: 48px;
-  background: #093961;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 24px;
-  font-weight: 800;
+  width: auto;
 }
 
 .companyName {

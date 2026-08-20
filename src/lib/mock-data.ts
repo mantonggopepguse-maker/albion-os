@@ -29,6 +29,7 @@ import type {
   TreatmentMedication,
   PatientQueue,
   VetService,
+  Supplier,
 } from '@/lib/types';
 // ---------------------------------------------------------------------------
 // Helper — all mock passwords (plain text, never shipped to production)
@@ -238,6 +239,44 @@ export const MOCK_PRODUCTS: Product[] = [
     image_url: null,
     created_at: '2025-01-10T00:00:00.000Z',
     is_active: true,
+  },
+];
+// ---------------------------------------------------------------------------
+// 3.5. MOCK SUPPLIERS
+// ---------------------------------------------------------------------------
+export const MOCK_SUPPLIERS: Supplier[] = [
+  {
+    id: 'sup-0001-vetpharma',
+    name: 'VetPharma Global Imports Ltd',
+    contact_person: 'Mr. Kenji Sato',
+    phone: '+234 802 345 6789',
+    email: 'orders@vetpharmaglobal.com',
+    address: '12 Commercial Avenue, Apapa, Lagos',
+    is_active: true,
+    created_at: '2025-01-05T00:00:00.000Z',
+    updated_at: '2025-01-05T00:00:00.000Z',
+  },
+  {
+    id: 'sup-0002-afrivet',
+    name: 'AfriVet Biologicals Nigeria',
+    contact_person: 'Dr. Grace Danjuma',
+    phone: '+234 813 987 6543',
+    email: 'supply@afrivet.ng',
+    address: '8 Industrial Layout, Trans-Amadi, Port Harcourt',
+    is_active: true,
+    created_at: '2025-01-08T00:00:00.000Z',
+    updated_at: '2025-01-08T00:00:00.000Z',
+  },
+  {
+    id: 'sup-0003-agrochem',
+    name: 'AgroChem International FZE',
+    contact_person: 'Chief Obinna Nnamdi',
+    phone: '+234 701 555 1212',
+    email: 'obinna@agrochem-fze.com',
+    address: 'Plot 4 Free Trade Zone, Calabar, Cross River',
+    is_active: true,
+    created_at: '2025-01-12T00:00:00.000Z',
+    updated_at: '2025-01-12T00:00:00.000Z',
   },
 ];
 // ---------------------------------------------------------------------------
@@ -970,9 +1009,9 @@ export const MOCK_VET_SERVICES: VetService[] = [
 ];
 
 export const MOCK_PATIENTS: Patient[] = [
-  { id: 'pat-001', owner_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', name: 'Max', species: 'Dog', breed: 'Golden Retriever', gender: 'Male', date_of_birth: '2022-03-15', age_years: 3, age_months: 2, weight_kg: 32.5, color: 'Golden', microchip_id: 'MC-982-0001', spayed_neutered: false, allergies: null, medical_notes: null, is_active: true, created_at: '2025-06-01T10:00:00.000Z', updated_at: '2025-06-01T10:00:00.000Z' },
-  { id: 'pat-002', owner_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', name: 'Luna', species: 'Cat', breed: 'Siamese', gender: 'Female', date_of_birth: '2021-11-20', age_years: 4, age_months: 7, weight_kg: 4.2, color: 'Cream', microchip_id: 'MC-982-0002', spayed_neutered: true, allergies: 'Fish', medical_notes: null, is_active: true, created_at: '2025-06-01T10:00:00.000Z', updated_at: '2025-06-01T10:00:00.000Z' },
-  { id: 'pat-003', owner_id: 'b2c3d4e5-f6a7-8901-bcde-f12345678901', name: 'Charlie', species: 'Dog', breed: 'German Shepherd', gender: 'Male', date_of_birth: '2023-01-10', age_years: 2, age_months: 5, weight_kg: 28.0, color: 'Black & Tan', microchip_id: 'MC-982-0003', spayed_neutered: false, allergies: 'Chicken', medical_notes: null, is_active: true, created_at: '2025-06-02T14:00:00.000Z', updated_at: '2025-06-02T14:00:00.000Z' },
+  { id: 'pat-001', owner_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', location_id: null, name: 'Max', species: 'Dog', breed: 'Golden Retriever', gender: 'Male', date_of_birth: '2022-03-15', age_years: 3, age_months: 2, weight_kg: 32.5, color: 'Golden', microchip_id: 'MC-982-0001', spayed_neutered: false, allergies: null, medical_notes: null, is_active: true, created_at: '2025-06-01T10:00:00.000Z', updated_at: '2025-06-01T10:00:00.000Z' },
+  { id: 'pat-002', owner_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', location_id: null, name: 'Luna', species: 'Cat', breed: 'Siamese', gender: 'Female', date_of_birth: '2021-11-20', age_years: 4, age_months: 7, weight_kg: 4.2, color: 'Cream', microchip_id: 'MC-982-0002', spayed_neutered: true, allergies: 'Fish', medical_notes: null, is_active: true, created_at: '2025-06-01T10:00:00.000Z', updated_at: '2025-06-01T10:00:00.000Z' },
+  { id: 'pat-003', owner_id: 'b2c3d4e5-f6a7-8901-bcde-f12345678901', location_id: null, name: 'Charlie', species: 'Dog', breed: 'German Shepherd', gender: 'Male', date_of_birth: '2023-01-10', age_years: 2, age_months: 5, weight_kg: 28.0, color: 'Black & Tan', microchip_id: 'MC-982-0003', spayed_neutered: false, allergies: 'Chicken', medical_notes: null, is_active: true, created_at: '2025-06-02T14:00:00.000Z', updated_at: '2025-06-02T14:00:00.000Z' },
 ];
 
 export const MOCK_APPOINTMENTS: Appointment[] = [
@@ -982,8 +1021,8 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
 ];
 
 export const MOCK_TREATMENTS: Treatment[] = [
-  { id: 'trt-001', patient_id: 'pat-001', vet_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', date: '2026-06-15', chief_complaint: 'Skin irritation on belly', diagnosis: 'Allergic dermatitis', assessment: 'Mild inflammation with erythema', plan: 'Prescribe antihistamines and hypoallergenic diet for 2 weeks', status: 'completed', follow_up_date: '2026-06-29', total_cost: 8500, created_at: '2026-06-15T10:00:00.000Z', updated_at: '2026-06-15T10:00:00.000Z' },
-  { id: 'trt-002', patient_id: 'pat-002', vet_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', date: '2026-06-20', chief_complaint: 'Vomiting after meals', diagnosis: 'Gastritis', assessment: 'Moderate dehydration noted', plan: 'IV fluids, antiemetics, bland diet for 3 days', status: 'ongoing', follow_up_date: '2026-06-27', total_cost: 12000, created_at: '2026-06-20T14:00:00.000Z', updated_at: '2026-06-20T14:00:00.000Z' },
+  { id: 'trt-001', patient_id: 'pat-001', vet_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', location_id: null, date: '2026-06-15', chief_complaint: 'Skin irritation on belly', diagnosis: 'Allergic dermatitis', assessment: 'Mild inflammation with erythema', plan: 'Prescribe antihistamines and hypoallergenic diet for 2 weeks', status: 'completed', follow_up_date: '2026-06-29', total_cost: 8500, created_at: '2026-06-15T10:00:00.000Z', updated_at: '2026-06-15T10:00:00.000Z' },
+  { id: 'trt-002', patient_id: 'pat-002', vet_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', location_id: null, date: '2026-06-20', chief_complaint: 'Vomiting after meals', diagnosis: 'Gastritis', assessment: 'Moderate dehydration noted', plan: 'IV fluids, antiemetics, bland diet for 3 days', status: 'ongoing', follow_up_date: '2026-06-27', total_cost: 12000, created_at: '2026-06-20T14:00:00.000Z', updated_at: '2026-06-20T14:00:00.000Z' },
 ];
 
 export const MOCK_TREATMENT_MEDICATIONS: TreatmentMedication[] = [

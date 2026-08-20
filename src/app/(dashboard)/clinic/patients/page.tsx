@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, FormEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, FormEvent } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import Topbar from '@/components/layout/Topbar';
 import { useClinicPatients, useUsers } from '@/hooks/use-supabase-data';
@@ -27,12 +27,17 @@ export default function PatientsPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ ...initialForm });
   const [saving, setSaving] = useState(false);
+  const initialOwnerSet = useRef(false);
 
   useEffect(() => {
-    if (showModal && users.length > 0 && !form.owner_id) {
+    if (showModal && users.length > 0 && !initialOwnerSet.current) {
+      initialOwnerSet.current = true;
       setForm((prev) => ({ ...prev, owner_id: users[0].id }));
     }
-  }, [showModal, users, form.owner_id]);
+    if (!showModal) {
+      initialOwnerSet.current = false;
+    }
+  }, [showModal, users]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -121,7 +126,7 @@ export default function PatientsPage() {
                   </td>
                 </tr>
               ) : (
-                patients.map((p: any) => (
+                patients.map((p) => (
                   <tr key={p.id} className={styles.tableRow}>
                     <td className={styles.tableCell}>{p.name}</td>
                     <td className={styles.tableCell}>{p.species}</td>
@@ -259,7 +264,7 @@ export default function PatientsPage() {
                       required
                     >
                       <option value="">Select an owner</option>
-                      {users.map((u: any) => (
+                      {users.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.full_name || u.email}
                         </option>

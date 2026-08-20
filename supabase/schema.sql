@@ -293,7 +293,25 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 
 
 -- ============================================================
--- 10. STOCK MOVEMENTS (Audit Trail)
+-- 10b. SUPPLIERS (defined before stock_movements so its FK can resolve)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS suppliers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  contact_person TEXT,
+  phone TEXT,
+  email TEXT,
+  address TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
+
+
+-- ============================================================
+-- 11. STOCK MOVEMENTS (Audit Trail)
 -- ============================================================
 -- Immutable log of all inventory changes. Every time stock is
 -- allocated, returned, received, adjusted, or written off, a
@@ -312,8 +330,9 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   product_id UUID NOT NULL REFERENCES products(id),
   from_location_id UUID REFERENCES locations(id),  -- Source location (NULL for receipts)
   to_location_id UUID REFERENCES locations(id),    -- Destination location (NULL for write-offs)
+  supplier_id UUID REFERENCES suppliers(id),       -- Supplier for receipts (NULL otherwise)
   quantity INTEGER NOT NULL,
-  movement_type TEXT NOT NULL CHECK (movement_type IN ('allocation', 'return', 'receipt', 'adjustment', 'write_off')),
+  movement_type TEXT NOT NULL CHECK (movement_type IN ('allocation', 'return', 'receipt', 'adjustment', 'write_off', 'sale')),
   reference_id UUID,                               -- FK to the triggering entity (invoice, PO, etc.)
   notes TEXT,
   performed_by UUID REFERENCES profiles(id),       -- The user who performed the action
@@ -679,6 +698,9 @@ CREATE INDEX IF NOT EXISTS idx_salaries_user ON salaries(user_id);
 -- Salaries: grade filtering
 CREATE INDEX IF NOT EXISTS idx_salaries_grade ON salaries(salary_grade_id);
 
+-- Suppliers: name lookups
+CREATE INDEX IF NOT EXISTS idx_supplier_name ON suppliers(name);
+
 -- Payroll runs: status-based views
 CREATE INDEX IF NOT EXISTS idx_payroll_runs_status ON payroll_runs(status);
 
@@ -924,8 +946,18 @@ CREATE POLICY "invoice_items_select_rep" ON invoice_items FOR SELECT USING (
   )
 );
 -- Manage: Admin, sales reps, and finance can create/edit/delete line items.
+-- Sales reps are restricted to items on invoices they own (parent-ownership check).
+-- This prevents a rep from inserting items into another rep's invoice.
 CREATE POLICY "invoice_items_manage" ON invoice_items FOR ALL USING (
-  get_user_role() IN ('super_admin', 'sales_rep', 'finance_manager')
+  get_user_role() IN ('super_admin', 'finance_manager')
+  OR (
+    get_user_role() = 'sales_rep'
+    AND EXISTS (
+      SELECT 1 FROM invoices
+      WHERE invoices.id = invoice_items.invoice_id
+      AND invoices.sales_rep_id = auth.uid()
+    )
+  )
 );
 
 -- ─── PAYMENTS ───
@@ -976,6 +1008,20 @@ CREATE POLICY "stock_movements_select" ON stock_movements FOR SELECT USING (
 CREATE POLICY "stock_movements_select_ceo" ON stock_movements FOR SELECT USING (get_user_role() = 'ceo');
 CREATE POLICY "stock_movements_insert" ON stock_movements FOR INSERT WITH CHECK (
   get_user_role() IN ('super_admin', 'inventory_manager')
+);
+
+-- ─── SUPPLIERS ───
+CREATE POLICY "suppliers_select" ON suppliers FOR SELECT USING (
+  get_user_role() IN ('super_admin', 'inventory_manager', 'ceo')
+);
+CREATE POLICY "suppliers_insert" ON suppliers FOR INSERT WITH CHECK (
+  get_user_role() IN ('super_admin', 'inventory_manager')
+);
+CREATE POLICY "suppliers_update" ON suppliers FOR UPDATE USING (
+  get_user_role() IN ('super_admin', 'inventory_manager')
+);
+CREATE POLICY "suppliers_delete" ON suppliers FOR DELETE USING (
+  get_user_role() = 'super_admin'
 );
 
 -- ─── SALARY GRADES ───
@@ -1150,6 +1196,182 @@ CREATE POLICY "vet_services_manage" ON vet_services FOR ALL USING (
 
 
 -- ============================================================
+-- AUDIT LOG (Immutable Financial Trail)
+-- ============================================================
+-- Records every sensitive financial action (approve, reject,
+-- reconcile) with a snapshot of before/after state.
+-- Rows are INSERT-only — never updated or deleted.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS audit_log (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  table_name TEXT NOT NULL,
+  record_id UUID NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('approved', 'rejected', 'reconciled', 'created', 'updated', 'deleted')),
+  actor_id UUID NOT NULL REFERENCES profiles(id),
+  actor_role TEXT NOT NULL,
+  details JSONB,
+  ip_address TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "audit_log_select" ON audit_log FOR SELECT USING (true);
+CREATE POLICY "audit_log_insert" ON audit_log FOR INSERT WITH CHECK (
+  get_user_role() IN ('super_admin', 'finance_manager')
+);
+
+
+-- ============================================================
+-- PAYMENT APPROVAL RPC (Server-Side Business Logic)
+-- ============================================================
+-- Atomically validates and executes payment approval inside a
+-- single SECURITY DEFINER transaction. This prevents client-side
+-- tampering: balance checks, invoice status transitions, and
+-- customer balance deductions all happen on the database server.
+-- ============================================================
+CREATE OR REPLACE FUNCTION approve_payment(
+  p_payment_id UUID,
+  p_approver_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+DECLARE
+  v_payment payments%ROWTYPE;
+  v_invoice invoices%ROWTYPE;
+  v_customer customers%ROWTYPE;
+  v_approved_total NUMERIC(12,2);
+  v_new_paid NUMERIC(12,2);
+  v_inv_status TEXT;
+  v_actor_role TEXT;
+BEGIN
+  -- Lock and fetch the payment row
+  SELECT * INTO v_payment FROM payments WHERE id = p_payment_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Payment not found');
+  END IF;
+
+  IF v_payment.status != 'pending' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Payment is not pending');
+  END IF;
+
+  -- Fetch approver role
+  SELECT role INTO v_actor_role FROM profiles WHERE id = p_approver_id;
+  IF v_actor_role IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Approver not found');
+  END IF;
+
+  -- Only finance_manager and super_admin can approve
+  IF v_actor_role NOT IN ('finance_manager', 'super_admin') THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Insufficient permissions');
+  END IF;
+
+  -- Process linked invoice if present
+  IF v_payment.invoice_id IS NOT NULL THEN
+    SELECT * INTO v_invoice FROM invoices WHERE id = v_payment.invoice_id FOR UPDATE;
+    IF NOT FOUND THEN
+      RETURN jsonb_build_object('success', false, 'error', 'Linked invoice not found');
+    END IF;
+
+    -- Calculate total approved amount for this invoice
+    SELECT COALESCE(SUM(amount), 0) INTO v_approved_total
+    FROM payments
+    WHERE invoice_id = v_payment.invoice_id AND status = 'approved';
+
+    v_new_paid := v_approved_total + v_payment.amount;
+
+    IF v_new_paid > v_invoice.total THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'error', 'Payment exceeds remaining invoice balance'
+      );
+    END IF;
+
+    -- Update invoice status
+    v_inv_status := CASE WHEN v_new_paid >= v_invoice.total THEN 'paid' ELSE 'partial' END;
+    UPDATE invoices SET status = v_inv_status WHERE id = v_payment.invoice_id;
+
+    -- Update customer outstanding balance
+    UPDATE customers
+    SET outstanding_balance = GREATEST(0, outstanding_balance - v_payment.amount)
+    WHERE id = v_payment.customer_id;
+  END IF;
+
+  -- Approve the payment
+  UPDATE payments
+  SET status = 'approved', approved_by = p_approver_id, approved_at = now()
+  WHERE id = p_payment_id;
+
+  -- Write immutable audit log
+  INSERT INTO audit_log (table_name, record_id, action, actor_id, actor_role, details)
+  VALUES (
+    'payments',
+    p_payment_id,
+    'approved',
+    p_approver_id,
+    v_actor_role,
+    jsonb_build_object(
+      'amount', v_payment.amount,
+      'method', v_payment.method,
+      'invoice_id', v_payment.invoice_id,
+      'customer_id', v_payment.customer_id
+    )
+  );
+
+  RETURN jsonb_build_object('success', true);
+END;
+$$;
+
+
+-- ============================================================
+-- REJECT PAYMENT RPC (Server-Side)
+-- ============================================================
+CREATE OR REPLACE FUNCTION reject_payment(
+  p_payment_id UUID,
+  p_approver_id UUID,
+  p_reason TEXT DEFAULT 'Rejected by finance'
+)
+RETURNS JSONB
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+DECLARE
+  v_payment payments%ROWTYPE;
+  v_actor_role TEXT;
+BEGIN
+  SELECT * INTO v_payment FROM payments WHERE id = p_payment_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Payment not found');
+  END IF;
+
+  IF v_payment.status != 'pending' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Payment is not pending');
+  END IF;
+
+  SELECT role INTO v_actor_role FROM profiles WHERE id = p_approver_id;
+  IF v_actor_role NOT IN ('finance_manager', 'super_admin') THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Insufficient permissions');
+  END IF;
+
+  UPDATE payments
+  SET status = 'rejected', approved_by = p_approver_id, notes = p_reason
+  WHERE id = p_payment_id;
+
+  INSERT INTO audit_log (table_name, record_id, action, actor_id, actor_role, details)
+  VALUES (
+    'payments',
+    p_payment_id,
+    'rejected',
+    p_approver_id,
+    v_actor_role,
+    jsonb_build_object('reason', p_reason, 'method', v_payment.method)
+  );
+
+  RETURN jsonb_build_object('success', true);
+END;
+$$;
+
+
+-- ============================================================
 -- SEED DATA (Locations)
 -- ============================================================
 -- Pre-populate the four core locations that the application
@@ -1251,6 +1473,7 @@ CREATE TRIGGER trg_profiles_updated_at BEFORE UPDATE ON profiles FOR EACH ROW EX
 CREATE TRIGGER trg_products_updated_at BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_inventory_updated_at BEFORE UPDATE ON inventory FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_customers_updated_at BEFORE UPDATE ON customers FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_suppliers_updated_at BEFORE UPDATE ON suppliers FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_invoices_updated_at BEFORE UPDATE ON invoices FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_payments_updated_at BEFORE UPDATE ON payments FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_salaries_updated_at BEFORE UPDATE ON salaries FOR EACH ROW EXECUTE FUNCTION update_updated_at();

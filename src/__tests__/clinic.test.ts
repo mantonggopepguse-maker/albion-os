@@ -13,10 +13,7 @@ import {
 import {
   MOCK_PATIENTS,
   MOCK_APPOINTMENTS,
-  MOCK_PATIENT_QUEUE,
-  MOCK_VET_SERVICES,
   MOCK_TREATMENTS,
-  MOCK_TREATMENT_MEDICATIONS,
 } from '@/lib/mock-data';
 
 let patientsSnapshot: typeof MOCK_PATIENTS;
@@ -218,8 +215,8 @@ describe('getTreatments', () => {
 });
 
 describe('getTreatmentMedications', () => {
-  it('returns medications for a treatment', () => {
-    const meds = getTreatmentMedications('trt-001');
+  it('returns medications for a treatment', async () => {
+    const meds = await getTreatmentMedications('trt-001');
     expect(Array.isArray(meds)).toBe(true);
     if (meds.length > 0) {
       expect(meds[0]).toHaveProperty('drug_name');
@@ -227,8 +224,8 @@ describe('getTreatmentMedications', () => {
     }
   });
 
-  it('returns empty array for treatment with no medications', () => {
-    const meds = getTreatmentMedications('non-existent');
+  it('returns empty array for treatment with no medications', async () => {
+    const meds = await getTreatmentMedications('non-existent');
     expect(meds).toEqual([]);
   });
 });

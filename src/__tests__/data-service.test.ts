@@ -61,19 +61,15 @@ afterEach(() => {
 });
 
 describe('generateInvoiceNumber', () => {
-  it('returns a string matching the INV-YYYY-NNN format', () => {
+  it('returns a string matching the INV-YYYY-XXXXX timestamp-based format', () => {
     const num = generateInvoiceNumber();
-    expect(num).toMatch(/^INV-\d{4}-\d{3}$/);
+    expect(num).toMatch(/^INV-\d{4}-[0-9A-Z]{5}$/);
   });
 
-  it('increments the sequence based on existing invoices for the year', () => {
-    const year = new Date().getFullYear();
-    const existingCount = MOCK_INVOICES.filter((i) =>
-      i.invoice_number.includes(`INV-${year}`)
-    ).length;
-    const num = generateInvoiceNumber();
-    const expected = `INV-${year}-${String(existingCount + 1).padStart(3, '0')}`;
-    expect(num).toBe(expected);
+  it('generates unique numbers on successive calls', () => {
+    const a = generateInvoiceNumber();
+    const b = generateInvoiceNumber();
+    expect(a).not.toBe(b);
   });
 });
 
@@ -409,7 +405,7 @@ describe('createInvoice', () => {
     expect(invoice.vat).toBe(Math.round(145000 * 0.075));
     expect(invoice.total).toBe(145000 + 10875);
     expect(invoice.status).toBe('draft');
-    expect(invoice.invoice_number).toMatch(/^INV-\d{4}-\d{3}$/);
+    expect(invoice.invoice_number).toMatch(/^INV-\d{4}-[0-9A-Z]{5}$/);
   });
 
   it('rejects empty item list', async () => {

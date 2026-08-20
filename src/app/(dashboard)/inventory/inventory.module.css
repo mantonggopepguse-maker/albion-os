@@ -85,7 +85,8 @@
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-clay-card);
   border: none;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table {
@@ -344,6 +345,15 @@
   .tabs { flex-wrap: wrap; }
   .toolbar { flex-direction: column; gap: var(--space-3); align-items: stretch; }
   .allocateBtn { width: 100%; text-align: center; }
+  .stockTakeBtn { width: 100%; text-align: center; }
   .formActions { flex-direction: column; }
   .cancelBtn, .submitBtn { width: 100%; }
+}
+
+@media (max-width: 640px) {
+  .page { padding: var(--space-4); }
+  .table thead th,
+  .table tbody td {
+    padding: var(--space-2) var(--space-3);
+  }
 }

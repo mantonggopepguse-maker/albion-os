@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Build output + coverage are generated, not source:
+    "server/dist/**",
+    "coverage/**",
   ]),
 ]);
 

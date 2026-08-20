@@ -286,6 +286,7 @@
 @media (max-width: 1024px) {
   .tableContainer {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .table {
@@ -303,9 +304,19 @@
     gap: var(--space-3);
   }
 
+  .addBtn {
+    width: 100%;
+    justify-content: center;
+  }
+
   .statsBar {
     flex-wrap: wrap;
     gap: var(--space-4);
+  }
+
+  .statItem {
+    flex: 1;
+    min-width: 120px;
   }
 
   .statDivider {

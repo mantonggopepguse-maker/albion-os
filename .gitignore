@@ -46,3 +46,10 @@ dump*.txt
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# build / deploy logs
+*.log
+
+# scratch / dump files
+*.txt
+!test-results/**/error-context.md

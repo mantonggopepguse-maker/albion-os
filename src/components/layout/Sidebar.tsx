@@ -84,10 +84,18 @@ export default function Sidebar() {
 
       {/* ── Logo / Brand Block ── */}
       <div className={styles.logo}>
-        <div className={styles.logoIcon}>A</div>
+        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-400 via-emerald-500 to-teal-700 p-0.5 shadow-md shadow-teal-500/20 flex items-center justify-center flex-shrink-0">
+          <div className="w-full h-full rounded-[14px] bg-slate-950/20 backdrop-blur-md flex items-center justify-center overflow-hidden">
+            <svg className="w-6 h-6 text-white drop-shadow-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="10" width="18" height="9" rx="4.5" transform="rotate(-30 12 14.5)" fill="currentColor" fillOpacity="0.25" />
+              <path d="M12 5v14M5 12h14" strokeWidth="2.5" />
+              <path d="M17 7c-2 0-4 1.5-4 4.5" stroke="currentColor" strokeWidth="2" opacity="0.85" />
+            </svg>
+          </div>
+        </div>
         <div className={styles.logoText}>
-          <span className={styles.logoTitle}>AlbionOS</span>
-          <span className={styles.logoSubtitle}>Pharma Suite</span>
+          <span className={styles.logoTitle}>Albion OS</span>
+          <span className={styles.logoSubtitle}>Pharmaceuticals Suite</span>
         </div>
       </div>
 

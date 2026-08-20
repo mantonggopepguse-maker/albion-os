@@ -10,7 +10,6 @@ import {
   processPayroll,
 } from '@/lib/data-service';
 import {
-  MOCK_USERS,
   MOCK_SALARIES,
   MOCK_PAYROLL_RUNS,
   MOCK_PAYSLIPS,
@@ -97,7 +96,7 @@ describe('submitLeaveRequest', () => {
   it('rejects missing leave type', async () => {
     const result = await submitLeaveRequest({
       user_id: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
-      leave_type: '' as any,
+      leave_type: '' as unknown as 'annual' | 'sick' | 'personal' | 'maternity' | 'paternity' | 'study',
       start_date: '2026-08-01',
       end_date: '2026-08-05',
       reason: 'Vacation',
@@ -186,21 +185,21 @@ describe('getPayrollRuns', () => {
 });
 
 describe('getPayrollRunById', () => {
-  it('returns a specific payroll run', () => {
-    const run = getPayrollRunById('pr-001');
+  it('returns a specific payroll run', async () => {
+    const run = await getPayrollRunById('pr-001');
     expect(run).toBeDefined();
     expect(run?.status).toBe('completed');
   });
 
-  it('returns undefined for non-existent run', () => {
-    const run = getPayrollRunById('non-existent');
+  it('returns undefined for non-existent run', async () => {
+    const run = await getPayrollRunById('non-existent');
     expect(run).toBeUndefined();
   });
 });
 
 describe('getPayslipsForRun', () => {
-  it('returns payslips for a valid payroll run', () => {
-    const payslips = getPayslipsForRun('pr-001');
+  it('returns payslips for a valid payroll run', async () => {
+    const payslips = await getPayslipsForRun('pr-001');
     expect(Array.isArray(payslips)).toBe(true);
     if (payslips.length > 0) {
       expect(payslips[0]).toHaveProperty('user_id');
@@ -208,8 +207,8 @@ describe('getPayslipsForRun', () => {
     }
   });
 
-  it('returns empty array for non-existent run', () => {
-    const payslips = getPayslipsForRun('non-existent');
+  it('returns empty array for non-existent run', async () => {
+    const payslips = await getPayslipsForRun('non-existent');
     expect(payslips).toEqual([]);
   });
 });
@@ -265,5 +264,40 @@ describe('processPayroll', () => {
     expect(result.success).toBe(true);
     expect(result.data!.total_net).toBeLessThan(result.data!.total_gross);
     expect(result.data!.total_deductions).toBeGreaterThan(0);
+  });
+
+  it('correctly incorporates tax_deduction, loan_repayment, unmet_target_penalty, custom_additions, and custom_deductions', async () => {
+    // Add custom debits and additions to an active salary
+    const activeSalary = MOCK_SALARIES.find((s) => s.is_active);
+    if (activeSalary) {
+      activeSalary.tax_deduction = 45000;
+      activeSalary.loan_repayment = 15000;
+      activeSalary.unmet_target_penalty = 5000;
+      activeSalary.custom_additions = [
+        { id: 'ca1', label: 'Overtime Allowance', type: 'flat', value: 20000, amount: 20000 },
+        { id: 'ca2', label: 'Target Achievement Bonus', type: 'percentage', value: 10, amount: 0 },
+      ];
+      activeSalary.custom_deductions = [
+        { id: 'cd1', label: 'Equipment Damage Fine', type: 'flat', value: 3000, amount: 3000 },
+      ];
+    }
+
+    const result = await processPayroll(
+      '2026-09-01',
+      '2026-09-30',
+      '2026-10-05',
+      'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toBeDefined();
+    const payslips = await getPayslipsForRun(result.data!.id);
+    const targetPs = payslips.find((p) => p.user_id === activeSalary?.user_id);
+    if (targetPs) {
+      expect(targetPs.loan_repayment).toBe(15000);
+      expect(targetPs.unmet_target_penalty).toBe(5000);
+      expect(targetPs.custom_additions).toHaveLength(2);
+      expect(targetPs.custom_deductions).toHaveLength(1);
+    }
   });
 });

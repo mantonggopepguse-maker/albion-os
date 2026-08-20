@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import Topbar from '@/components/layout/Topbar';
 import { useAuth } from '@/lib/auth-context';
-import { useCustomers, useInvoices, usePayments, useInventory } from '@/hooks/use-supabase-data';
+import { useCustomers, useInvoices, usePayments, useInventory, useProducts } from '@/hooks/use-supabase-data';
 import Modal from '@/components/ui/Modal';
 import styles from './reports.module.css';
 
@@ -83,8 +83,9 @@ export default function ReportsPage() {
   const { invoices } = useInvoices();
   const { payments } = usePayments();
   const { inventory } = useInventory();
+  const { products } = useProducts(true);
 
-  const nowRef = useMemo(() => Date.now(), []);
+  const [nowRef] = useState(() => Date.now());
 
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [activeReport, setActiveReport] = useState<ReportCard | null>(null);
@@ -92,58 +93,6 @@ export default function ReportsPage() {
   const [dateTo, setDateTo] = useState('');
   const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([]);
   const [viewReport, setViewReport] = useState<ReportView>(null);
-
-  function buildSummary(type: string): string {
-    switch (type) {
-      case 'sales': {
-        const totalRevenue = invoices.reduce((s, i) => s + i.total, 0);
-        const totalInvoices = invoices.length;
-        return `${totalInvoices} invoices, ${formatNaira(totalRevenue)} total revenue`;
-      }
-      case 'inventory': {
-        const totalItems = inventory.reduce((s, i) => s + i.quantity, 0);
-        const expiringCount = inventory.filter((i) => {
-          const days = (new Date(i.expiry_date).getTime() - nowRef) / 86400000;
-          return days > 0 && days <= 90;
-        }).length;
-        return `${inventory.length} batches, ${totalItems} units, ${expiringCount} expiring within 90 days`;
-      }
-      case 'financial': {
-        const totalOutstanding = customers.reduce((s, c) => s + c.outstanding_balance, 0);
-        const totalApproved = payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
-        const totalPending = payments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0);
-        return `${formatNaira(totalOutstanding)} outstanding, ${formatNaira(totalApproved)} collected, ${formatNaira(totalPending)} pending`;
-      }
-      case 'customer': {
-        const activeCustomers = customers.filter((c) => c.is_active !== false).length;
-        const withBalance = customers.filter((c) => c.outstanding_balance > 0).length;
-        return `${activeCustomers} active customers, ${withBalance} with outstanding balance`;
-      }
-      case 'rep-performance': {
-        const totalInvoiced = invoices.reduce((s, i) => s + i.total, 0);
-        const totalCollected = payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
-        const collectionRate = totalInvoiced > 0 ? Math.round((totalCollected / totalInvoiced) * 100) : 0;
-        return `${formatNaira(totalInvoiced)} invoiced, ${formatNaira(totalCollected)} collected (${collectionRate}% rate)`;
-      }
-      case 'expiry': {
-        const within30 = inventory.filter((i) => {
-          const days = (new Date(i.expiry_date).getTime() - nowRef) / 86400000;
-          return days > 0 && days <= 30;
-        }).length;
-        const within60 = inventory.filter((i) => {
-          const days = (new Date(i.expiry_date).getTime() - nowRef) / 86400000;
-          return days > 30 && days <= 60;
-        }).length;
-        const within90 = inventory.filter((i) => {
-          const days = (new Date(i.expiry_date).getTime() - nowRef) / 86400000;
-          return days > 60 && days <= 90;
-        }).length;
-        return `${within30} expiring within 30 days, ${within60} within 60 days, ${within90} within 90 days`;
-      }
-      default:
-        return '';
-    }
-  }
 
   const handleGenerate = useCallback((report: ReportCard) => {
     setActiveReport(report);
@@ -154,6 +103,58 @@ export default function ReportsPage() {
 
   const generateReport = useCallback(() => {
     if (!activeReport) return;
+
+    const buildSummaryLocal = (type: string): string => {
+      switch (type) {
+        case 'sales': {
+          const totalRevenue = invoices.reduce((s, i) => s + i.total, 0);
+          const totalInvoices = invoices.length;
+          return `${totalInvoices} invoices, ${formatNaira(totalRevenue)} total revenue`;
+        }
+        case 'inventory': {
+          const totalItems = inventory.reduce((s, i) => s + i.quantity, 0);
+          const expiringCount = inventory.filter((i) => {
+            const days = (new Date(i.expiry_date).getTime() - nowRef) / 86400000;
+            return days > 0 && days <= 90;
+          }).length;
+          return `${inventory.length} batches, ${totalItems} units, ${expiringCount} expiring within 90 days`;
+        }
+        case 'financial': {
+          const totalOutstanding = customers.reduce((s, c) => s + c.outstanding_balance, 0);
+          const totalApproved = payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
+          const totalPending = payments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0);
+          return `${formatNaira(totalOutstanding)} outstanding, ${formatNaira(totalApproved)} collected, ${formatNaira(totalPending)} pending`;
+        }
+        case 'customer': {
+          const activeCustomers = customers.filter((c) => c.is_active !== false).length;
+          const withBalance = customers.filter((c) => c.outstanding_balance > 0).length;
+          return `${activeCustomers} active customers, ${withBalance} with outstanding balance`;
+        }
+        case 'rep-performance': {
+          const totalInvoiced = invoices.reduce((s, i) => s + i.total, 0);
+          const totalCollected = payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
+          const collectionRate = totalInvoiced > 0 ? Math.round((totalCollected / totalInvoiced) * 100) : 0;
+          return `${formatNaira(totalInvoiced)} invoiced, ${formatNaira(totalCollected)} collected (${collectionRate}% rate)`;
+        }
+        case 'expiry': {
+          const within30 = inventory.filter((i) => {
+            const days = (new Date(i.expiry_date).getTime() - nowRef) / 86400000;
+            return days > 0 && days <= 30;
+          }).length;
+          const within60 = inventory.filter((i) => {
+            const days = (new Date(i.expiry_date).getTime() - nowRef) / 86400000;
+            return days > 30 && days <= 60;
+          }).length;
+          const within90 = inventory.filter((i) => {
+            const days = (new Date(i.expiry_date).getTime() - nowRef) / 86400000;
+            return days > 60 && days <= 90;
+          }).length;
+          return `${within30} expiring within 30 days, ${within60} within 60 days, ${within90} within 90 days`;
+        }
+        default:
+          return '';
+      }
+    };
 
     const label = dateFrom && dateTo
       ? `${formatDate(dateFrom)} \u2013 ${formatDate(dateTo)}`
@@ -166,13 +167,13 @@ export default function ReportsPage() {
       dateRange: label,
       generatedAt: new Date().toISOString(),
       generatedBy: currentUser?.full_name || 'Unknown',
-      summary: buildSummary(activeReport.id),
+      summary: buildSummaryLocal(activeReport.id),
     };
 
     setGeneratedReports((prev) => [report, ...prev]);
     setShowGenerateModal(false);
     setActiveReport(null);
-  }, [activeReport, dateFrom, dateTo, currentUser, nowRef]);
+  }, [activeReport, dateFrom, dateTo, currentUser, nowRef, invoices, payments, inventory, customers]);
 
   const viewReportData = viewReport ? (
     <div style={{ padding: '0.5rem' }}>
@@ -214,6 +215,7 @@ export default function ReportsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--color-border)', textAlign: 'left' }}>
+                <th style={{ padding: '0.5rem' }}>Product</th>
                 <th style={{ padding: '0.5rem' }}>Batch</th>
                 <th style={{ padding: '0.5rem' }}>Quantity</th>
                 <th style={{ padding: '0.5rem' }}>Expiry</th>
@@ -223,6 +225,7 @@ export default function ReportsPage() {
             <tbody>
               {inventory.map((item) => (
                 <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border-light)' }}>
+                  <td style={{ padding: '0.5rem', fontWeight: 600 }}>{products.find((p) => p.id === item.product_id)?.name || item.product_id}</td>
                   <td style={{ padding: '0.5rem' }}>{item.batch_number}</td>
                   <td style={{ padding: '0.5rem' }}>{item.quantity}</td>
                   <td style={{ padding: '0.5rem' }}>{formatDate(item.expiry_date)}</td>

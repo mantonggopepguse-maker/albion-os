@@ -31,6 +31,7 @@ import { useState, useMemo, useCallback } from 'react';
 import Topbar from '@/components/layout/Topbar';
 import Modal from '@/components/ui/Modal';
 import Toast from '@/components/ui/Toast';
+import { createClient } from '@/lib/supabase/client';
 /* ── Supabase hooks replace the old synchronous data-service imports ── */
 import {
   usePayments, useCustomers, useInvoices, useUsers,
@@ -350,6 +351,7 @@ export default function PaymentsPage() {
   const [formMethod, setFormMethod] = useState<'cash' | 'bank_transfer'>('cash');
   const [formNotes, setFormNotes] = useState('');
   const [formProofUrl, setFormProofUrl] = useState('');
+  const [formFile, setFormFile] = useState<File | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
   /**
@@ -521,6 +523,7 @@ export default function PaymentsPage() {
     setFormMethod('cash');
     setFormNotes('');
     setFormProofUrl('');
+    setFormFile(null);
     setFormSubmitting(false);
   }, []);
 
@@ -569,8 +572,37 @@ export default function PaymentsPage() {
         setToast({ message: 'Amount must be greater than 0.', type: 'error' });
         return;
       }
+      if (formMethod === 'bank_transfer' && !formFile && !formProofUrl) {
+        setToast({ message: 'Please select a receipt file to upload.', type: 'error' });
+        return;
+      }
 
       setFormSubmitting(true);
+
+      /* ── Upload receipt file to Supabase Storage if present ── */
+      let receiptUrl = formProofUrl;
+      if (formMethod === 'bank_transfer' && formFile) {
+        const supabase = createClient();
+        const ext = formFile.name.split('.').pop()?.toLowerCase() || 'jpg';
+        const filePath = `${user.id}/${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from('receipts')
+          .upload(filePath, formFile, {
+            contentType: formFile.type,
+            upsert: false,
+          });
+
+        if (uploadError) {
+          setToast({ message: `Upload failed: ${uploadError.message}`, type: 'error' });
+          setFormSubmitting(false);
+          return;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('receipts')
+          .getPublicUrl(filePath);
+        receiptUrl = publicUrl;
+      }
 
       /* ── Build input and call Supabase hook ── */
       const input: RecordPaymentInput = {
@@ -578,7 +610,7 @@ export default function PaymentsPage() {
         invoice_id: formInvoiceId,
         amount,
         method: formMethod,
-        proof_url: formProofUrl.trim() || null,
+        proof_url: receiptUrl || null,
         notes: formNotes.trim() || undefined,
       };
 
@@ -592,7 +624,7 @@ export default function PaymentsPage() {
         setFormSubmitting(false);
       }
     },
-    [user, formCustomerId, formInvoiceId, formAmount, formMethod, formProofUrl, formNotes, closeRecordModal, recordPayment]
+    [user, formCustomerId, formInvoiceId, formAmount, formMethod, formProofUrl, formFile, formNotes, closeRecordModal, recordPayment]
   );
 
   /**
@@ -637,7 +669,7 @@ export default function PaymentsPage() {
               Record, review, and verify payment transactions
             </p>
           </div>
-          {user?.role !== 'ceo' && (
+          {user?.role !== 'ceo' && user?.role !== 'super_admin' && (
             <button className={styles.recordBtn} onClick={openRecordModal}>
               + Record Payment
             </button>
@@ -868,15 +900,30 @@ export default function PaymentsPage() {
                 Receipt / Proof of Payment <span className={styles.required}>*</span>
               </label>
               <input
-                type="url"
+                type="file"
                 className={styles.formInput}
-                value={formProofUrl}
-                onChange={(e) => setFormProofUrl(e.target.value)}
-                placeholder="Paste a URL or upload link to the receipt image"
+                accept="image/png,image/jpeg,image/webp,application/pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setFormFile(file);
+                }}
               />
-              <span className={styles.formHint}>
-                Upload receipt to Supabase Storage or provide a direct image URL
-              </span>
+              {formProofUrl && (
+                <span className={styles.formHint}>
+                  ✓ Receipt uploaded —{' '}
+                  <a href={formProofUrl} target="_blank" rel="noopener noreferrer">view</a>
+                </span>
+              )}
+              {!formProofUrl && !formFile && (
+                <span className={styles.formHint}>
+                  Accepted: PNG, JPEG, WebP, PDF (max 5MB)
+                </span>
+              )}
+              {formFile && !formProofUrl && (
+                <span className={styles.formHint}>
+                  {formFile.name} ({(formFile.size / 1024).toFixed(0)} KB) — will upload on submit
+                </span>
+              )}
             </div>
           )}
 

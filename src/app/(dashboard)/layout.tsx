@@ -40,6 +40,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import Sidebar from '@/components/layout/Sidebar';
+import MobileMenu from '@/components/layout/MobileMenu';
 import styles from './dashboard-layout.module.css';
 
 /* ────────────────────────────────────────────
@@ -52,7 +53,7 @@ import styles from './dashboard-layout.module.css';
  * This component implements a **client-side auth guard**:
  *   - Redirects unauthenticated users to `/login`.
  *   - Shows a full-screen loading indicator during the initial auth check.
- *   - Renders the sidebar + main content area once the user is confirmed.
+ *   - Renders the mobile top navbar, sidebar, + main content area once confirmed.
  *
  * @param children - The page content rendered inside the `<main>` element.
  * @returns The dashboard shell UI, a loading screen, or null (during redirect).
@@ -92,9 +93,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   /* ── Authenticated layout ──
-     Two-column layout: fixed sidebar on the left, scrollable main on the right. */
+     Mobile top navbar + fixed sidebar on desktop, scrollable main on the right. */
   return (
     <div className={styles.layout}>
+      <MobileMenu />
       <Sidebar />
       <main className={styles.main}>
         {children}

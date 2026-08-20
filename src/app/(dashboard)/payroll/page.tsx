@@ -5,6 +5,7 @@ import Topbar from '@/components/layout/Topbar';
 import Modal from '@/components/ui/Modal';
 import Toast from '@/components/ui/Toast';
 import { useAuth } from '@/lib/auth-context';
+import { useUsers } from '@/hooks/use-supabase-data';
 import {
   getPayrollRuns,
   getPayslipsForRun,
@@ -30,6 +31,7 @@ function formatShortDate(iso: string): string {
 
 export default function PayrollPage() {
   const { user: currentUser } = useAuth();
+  const { users } = useUsers();
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   useEffect(() => { getPayrollRuns().then(setPayrollRuns); }, []);
   const [selectedRun, setSelectedRun] = useState<PayrollRun | null>(null);
@@ -57,7 +59,8 @@ export default function PayrollPage() {
 
   function openPayslips(run: PayrollRun) {
     setSelectedRun(run);
-    setSelectedPayslips(getPayslipsForRun(run.id));
+    setSelectedPayslips([]);
+    getPayslipsForRun(run.id).then((payslips) => setSelectedPayslips(payslips));
   }
 
   async function handleProcessPayroll(e: React.FormEvent) {
@@ -188,7 +191,7 @@ export default function PayrollPage() {
             title={`Payslips — ${formatShortDate(selectedRun.period_start)} to ${formatShortDate(selectedRun.period_end)}`}
             subtitle={`Payment date: ${formatDate(selectedRun.payment_date)} — Total disbursed: ${fmt(selectedRun.total_net)}`}
           >
-            <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <div className={styles.payslipTableWrap}>
               <table className={styles.payslipTable}>
                 <thead>
                   <tr>
@@ -206,7 +209,7 @@ export default function PayrollPage() {
                   {selectedPayslips.length === 0 ? (
                     <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No payslips for this run</td></tr>
                   ) : selectedPayslips.map((ps) => {
-                    const employee = findUserById(ps.user_id);
+                    const employee = users.find((u) => u.id === ps.user_id) || findUserById(ps.user_id);
                     return (
                       <tr key={ps.id}>
                         <td style={{ fontWeight: 600 }}>{employee?.full_name || 'Unknown'}</td>

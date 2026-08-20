@@ -21,8 +21,8 @@ import Topbar from '@/components/layout/Topbar';
 import Modal from '@/components/ui/Modal';
 import Toast from '@/components/ui/Toast';
 import {
-  useInvoices, useCustomers, useProducts,
-  findCustomerById,
+  useInvoices, useCustomers, useProducts, useInventory,
+  findCustomerById, findProductById,
 } from '@/hooks/use-supabase-data';
 import { useAuth } from '@/lib/auth-context';
 import type { InvoiceStatus } from '@/lib/types';
@@ -80,6 +80,7 @@ export default function InvoicesPage() {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [showModal, setShowModal] = useState(false);
+  const [viewingInvoice, setViewingInvoice] = useState<any>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   /* ── Form state ── */
@@ -93,6 +94,7 @@ export default function InvoicesPage() {
   const { invoices, createInvoice, updateInvoiceStatus } = useInvoices();
   const { customers } = useCustomers();
   const { products } = useProducts();
+  const { inventory } = useInventory();
 
   /* ── Enriched invoices with customer names ── */
   const enriched = useMemo(() =>
@@ -199,6 +201,25 @@ export default function InvoicesPage() {
     if (lineItems.some((l) => !l.product_id)) { setToast({ message: 'Please select a product for each line', type: 'error' }); return; }
     if (lineItems.some((l) => l.quantity <= 0)) { setToast({ message: 'Quantity must be > 0', type: 'error' }); return; }
 
+    // Territory stock availability guard for sales reps
+    if (user.role === 'sales_rep' && user.location_id) {
+      for (const l of lineItems) {
+        const prod = products.find((p) => p.id === l.product_id);
+        const prodName = prod?.name || 'Selected product';
+        const repStock = inventory.filter(
+          (item) => item.product_id === l.product_id && item.location_id === user.location_id
+        );
+        const avail = repStock.reduce((sum, item) => sum + item.quantity, 0);
+        if (l.quantity > avail) {
+          setToast({
+            message: `Insufficient stock for ${prodName}. Available in your territory: ${avail} units.`,
+            type: 'error',
+          });
+          return;
+        }
+      }
+    }
+
     setIsSubmitting(true);
 
     const result = await createInvoice(
@@ -222,11 +243,11 @@ export default function InvoicesPage() {
     setIsSubmitting(false);
   }, [user, customerId, dueDate, lineItems, products, createInvoice, resetForm]);
 
-  const handleMarkSent = useCallback(async (invoiceId: string) => {
+  const handleStatusTransition = useCallback(async (invoiceId: string, newStatus: InvoiceStatus, label: string) => {
     setSendingId(invoiceId);
-    const result = await updateInvoiceStatus(invoiceId, 'sent');
+    const result = await updateInvoiceStatus(invoiceId, newStatus);
     setToast({
-      message: result.success ? 'Invoice marked as sent' : (result.error || 'Failed to update'),
+      message: result.success ? `Invoice ${label}` : (result.error || 'Failed to update'),
       type: result.success ? 'success' : 'error',
     });
     setSendingId(null);
@@ -247,7 +268,7 @@ export default function InvoicesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          {user.role !== 'ceo' && (
+          {user.role !== 'ceo' && user.role !== 'super_admin' && (
             <button className={styles.addBtn} onClick={openModal}>
               ＋ New Invoice
             </button>
@@ -325,32 +346,89 @@ export default function InvoicesPage() {
               ) : (
                 filtered.map((inv) => (
                   <tr key={inv.id} className={styles.row}>
-                    <td className={styles.invoiceNum}>{inv.invoice_number}</td>
+                    <td className={styles.invoiceNum} style={{ cursor: 'pointer', color: 'var(--color-ocean)', fontWeight: 600 }} onClick={() => setViewingInvoice(inv)}>
+                      {inv.invoice_number}
+                    </td>
                     <td>{inv.customerName}</td>
                     <td className={styles.amount}>{fmt(inv.total)}</td>
                     <td><StatusBadge status={inv.status} /></td>
                     <td>{formatDate(inv.created_at)}</td>
                     <td>{formatDate(inv.due_date)}</td>
                     <td>
-                      {inv.status === 'draft' && (
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
                           style={{
-                            padding: '0.25rem 0.75rem',
+                            padding: '0.25rem 0.65rem',
                             border: '1px solid var(--color-border)',
                             borderRadius: 'var(--radius-md)',
                             fontSize: '0.8rem',
                             fontWeight: 600,
-                            background: 'var(--color-ocean)',
-                            color: '#fff',
-                            cursor: sendingId === inv.id ? 'not-allowed' : 'pointer',
-                            opacity: sendingId === inv.id ? 0.6 : 1,
+                            background: 'var(--color-surface-card)',
+                            color: 'var(--color-text-main)',
+                            cursor: 'pointer',
                           }}
-                          disabled={sendingId === inv.id}
-                          onClick={() => handleMarkSent(inv.id)}
+                          onClick={() => setViewingInvoice(inv)}
                         >
-                          {sendingId === inv.id ? '...' : 'Mark Sent'}
+                          👁️ View
                         </button>
-                      )}
+                        {inv.status === 'draft' && (
+                          <button
+                            style={{
+                              padding: '0.25rem 0.75rem',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-md)',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              background: 'var(--color-ocean)',
+                              color: '#fff',
+                              cursor: sendingId === inv.id ? 'not-allowed' : 'pointer',
+                              opacity: sendingId === inv.id ? 0.6 : 1,
+                            }}
+                            disabled={sendingId === inv.id}
+                            onClick={() => handleStatusTransition(inv.id, 'sent', 'marked as sent')}
+                          >
+                            {sendingId === inv.id ? '...' : 'Mark Sent'}
+                          </button>
+                        )}
+                        {inv.status === 'sent' && (
+                          <button
+                            style={{
+                              padding: '0.25rem 0.75rem',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-md)',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              background: '#fef3c7',
+                              color: '#b45309',
+                              cursor: sendingId === inv.id ? 'not-allowed' : 'pointer',
+                              opacity: sendingId === inv.id ? 0.6 : 1,
+                            }}
+                            disabled={sendingId === inv.id}
+                            onClick={() => handleStatusTransition(inv.id, 'overdue', 'marked as overdue')}
+                          >
+                            {sendingId === inv.id ? '...' : 'Mark Overdue'}
+                          </button>
+                        )}
+                        {(inv.status === 'sent' || inv.status === 'overdue') && user?.role !== 'sales_rep' && (
+                          <button
+                            style={{
+                              padding: '0.25rem 0.75rem',
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-md)',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              background: '#15803d',
+                              color: '#fff',
+                              cursor: sendingId === inv.id ? 'not-allowed' : 'pointer',
+                              opacity: sendingId === inv.id ? 0.6 : 1,
+                            }}
+                            disabled={sendingId === inv.id}
+                            onClick={() => handleStatusTransition(inv.id, 'paid', 'marked as paid')}
+                          >
+                            {sendingId === inv.id ? '...' : 'Mark Paid'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -500,6 +578,101 @@ export default function InvoicesPage() {
               </button>
             </div>
           </form>
+        </Modal>
+
+        {/* ── Invoice Detail Modal ── */}
+        <Modal
+          isOpen={!!viewingInvoice}
+          onClose={() => setViewingInvoice(null)}
+          title={`Invoice ${viewingInvoice?.invoice_number || ''}`}
+          subtitle={`Customer: ${viewingInvoice?.customerName || 'N/A'}`}
+          maxWidth="640px"
+        >
+          {viewingInvoice && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(248,250,252,0.8)', padding: '1rem', borderRadius: 'var(--radius-lg)' }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-gray)' }}>Status</p>
+                  <StatusBadge status={viewingInvoice.status} />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-gray)' }}>Date Created</p>
+                  <p style={{ margin: 0, fontWeight: 600 }}>{formatDate(viewingInvoice.created_at)}</p>
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-gray)' }}>Due Date</p>
+                  <p style={{ margin: 0, fontWeight: 600 }}>{formatDate(viewingInvoice.due_date)}</p>
+                </div>
+              </div>
+
+              <div>
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem' }}>Line Items</h4>
+                <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--color-border)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--color-surface-card)', textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}>
+                        <th style={{ padding: '0.5rem 0.75rem' }}>Product</th>
+                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>Qty</th>
+                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>Price</th>
+                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewingInvoice.invoice_items && viewingInvoice.invoice_items.length > 0 ? (
+                        viewingInvoice.invoice_items.map((item: any, idx: number) => {
+                          const prod = findProductById(products, item.product_id);
+                          return (
+                            <tr key={idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                              <td style={{ padding: '0.5rem 0.75rem' }}>{prod?.name || item.product_name || 'Product'}</td>
+                              <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>{item.quantity}</td>
+                              <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>{fmt(item.unit_price || prod?.unit_price || 0)}</td>
+                              <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', fontWeight: 600 }}>{fmt(item.line_total || (item.quantity * (item.unit_price || prod?.unit_price || 0)))}</td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={4} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-gray)' }}>Total Invoice Value: {fmt(viewingInvoice.total)}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-end', borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', fontSize: '0.85rem' }}>
+                  <span>Subtotal:</span>
+                  <span>{fmt(viewingInvoice.subtotal || Math.round(viewingInvoice.total / 1.075))}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', fontSize: '0.85rem', color: 'var(--color-gray)' }}>
+                  <span>VAT (7.5%):</span>
+                  <span>{fmt(viewingInvoice.vat || Math.round(viewingInvoice.total - (viewingInvoice.total / 1.075)))}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', fontSize: '1rem', fontWeight: 700, marginTop: '0.25rem' }}>
+                  <span>Grand Total:</span>
+                  <span style={{ color: 'var(--color-ocean)' }}>{fmt(viewingInvoice.total)}</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  style={{ padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                  onClick={() => setViewingInvoice(null)}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  style={{ padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-ocean)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  onClick={() => window.open(`/invoices/${viewingInvoice.id}/print`, '_blank')}
+                >
+                  🖨️ Print Invoice
+                </button>
+              </div>
+            </div>
+          )}
         </Modal>
 
         {/* ── Toast Notification ── */}

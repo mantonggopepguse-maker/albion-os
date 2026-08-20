@@ -4,12 +4,6 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useNotifications } from '@/lib/notifications-context';
 
-const severityColors: Record<string, string> = {
-  high: '#dc2626',
-  medium: '#b45309',
-  low: '#2563eb',
-};
-
 const severityDots: Record<string, string> = {
   high: '🔴',
   medium: '🟠',

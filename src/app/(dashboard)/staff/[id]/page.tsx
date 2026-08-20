@@ -1,15 +1,14 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Topbar from '@/components/layout/Topbar';
 import Modal from '@/components/ui/Modal';
 import { useAuth, getRoleLabel } from '@/lib/auth-context';
-import { useUsers, useLocations, findLocationById } from '@/hooks/use-supabase-data';
+import { useUsers, useLocations, findLocationById, useLeaveRequests } from '@/hooks/use-supabase-data';
 import {
   getSalaryForUser,
   getPayslipsForUser,
-  getLeaveRequestsForUser,
   getLeaveBalancesForUser,
   getAttendanceLogsForUser,
   getDocumentsForUser,
@@ -17,9 +16,17 @@ import {
   getPerformanceReviewsForUser,
   clockIn,
   clockOut,
-  submitLeaveRequest,
 } from '@/lib/data-service';
-import type { LeaveType } from '@/lib/types';
+import type {
+  LeaveType,
+  Salary,
+  Payslip,
+  LeaveBalance,
+  AttendanceLog,
+  EmployeeDocument,
+  PerformanceTarget,
+  PerformanceReview,
+} from '@/lib/types';
 import styles from './staff-detail.module.css';
 
 function fmt(n: number): string {
@@ -42,6 +49,12 @@ export default function StaffDetailPage() {
   const { user: currentUser } = useAuth();
   const { users, loading: usersLoading } = useUsers();
   const { locations } = useLocations();
+  const {
+    leaveRequests: allLeaveRequests,
+    loading: leaveLoading,
+    submitLeaveRequest,
+    reviewLeaveRequest,
+  } = useLeaveRequests();
 
   const [activeTab, setActiveTab] = useState<Tab>('Salary');
   const [leaveModal, setLeaveModal] = useState(false);
@@ -52,15 +65,60 @@ export default function StaffDetailPage() {
   const location = staff?.location_id ? findLocationById(locations, staff.location_id) : null;
   const isCeo = currentUser?.role === 'ceo' || currentUser?.role === 'super_admin';
   const isOwnProfile = currentUser?.id === userId;
+  const isReviewer = isCeo;
 
-  const salary = useMemo(() => staff ? getSalaryForUser(staff.id) : undefined, [staff]);
-  const payslips = useMemo(() => staff ? getPayslipsForUser(staff.id) : [], [staff]);
-  const leaveRequests = useMemo(() => staff ? getLeaveRequestsForUser(staff.id) : [], [staff]);
-  const leaveBalances = useMemo(() => staff ? getLeaveBalancesForUser(staff.id) : [], [staff]);
-  const attendanceLogs = useMemo(() => staff ? getAttendanceLogsForUser(staff.id) : [], [staff]);
-  const documents = useMemo(() => staff ? getDocumentsForUser(staff.id) : [], [staff]);
-  const targets = useMemo(() => staff ? getPerformanceTargetsForUser(staff.id) : [], [staff]);
-  const reviews = useMemo(() => staff ? getPerformanceReviewsForUser(staff.id) : [], [staff]);
+  const [detailsMap, setDetailsMap] = useState<Record<string, {
+    salary?: Salary;
+    payslips: Payslip[];
+    leaveBalances: LeaveBalance[];
+    attendanceLogs: AttendanceLog[];
+    documents: EmployeeDocument[];
+    targets: PerformanceTarget[];
+    reviews: PerformanceReview[];
+  }>>({});
+
+  useEffect(() => {
+    if (!staff) return;
+    let cancelled = false;
+    Promise.all([
+      getSalaryForUser(staff.id),
+      getPayslipsForUser(staff.id),
+      getLeaveBalancesForUser(staff.id),
+      getAttendanceLogsForUser(staff.id),
+      getDocumentsForUser(staff.id),
+      getPerformanceTargetsForUser(staff.id),
+      getPerformanceReviewsForUser(staff.id),
+    ]).then(([salary, payslips, leaveBalances, attendanceLogs, documents, targets, reviews]) => {
+      if (cancelled) return;
+      setDetailsMap((prev) => ({
+        ...prev,
+        [staff.id]: { salary, payslips, leaveBalances, attendanceLogs, documents, targets, reviews },
+      }));
+    }).catch(() => {
+      if (cancelled) return;
+      setDetailsMap((prev) => ({
+        ...prev,
+        [staff.id]: { salary: undefined, payslips: [], leaveBalances: [], attendanceLogs: [], documents: [], targets: [], reviews: [] },
+      }));
+    });
+    return () => { cancelled = true; };
+  }, [staff]);
+
+  const leaveRequests = useMemo(
+    () => staff ? allLeaveRequests.filter((lr) => lr.user_id === staff.id) : [],
+    [allLeaveRequests, staff],
+  );
+
+  const details = detailsMap[userId];
+  const detailsLoading = !details;
+
+  const salary = details?.salary;
+  const payslips = details?.payslips ?? [];
+  const leaveBalances = details?.leaveBalances ?? [];
+  const attendanceLogs = details?.attendanceLogs ?? [];
+  const documents = details?.documents ?? [];
+  const targets = details?.targets ?? [];
+  const reviews = details?.reviews ?? [];
 
   if (usersLoading) {
     return (
@@ -89,6 +147,17 @@ export default function StaffDetailPage() {
 
   const profile = staff!;
 
+  if (detailsLoading) {
+    return (
+      <>
+        <Topbar title={`${staff.full_name} — Staff Profile`} />
+        <div className={styles.page} style={{ textAlign: 'center', padding: '4rem' }}>
+          <p>Loading staff details...</p>
+        </div>
+      </>
+    );
+  }
+
   async function handleClockIn() {
     const result = await clockIn(isOwnProfile ? currentUser!.id : profile.id);
     setClockMsg(result.success ? 'Clocked in successfully' : (result.error || ''));
@@ -99,6 +168,22 @@ export default function StaffDetailPage() {
     const result = await clockOut(isOwnProfile ? currentUser!.id : profile.id);
     setClockMsg(result.success ? 'Clocked out successfully' : (result.error || ''));
     setTimeout(() => setClockMsg(''), 3000);
+  }
+
+  async function refreshLeaveBalances() {
+    if (!staff) return;
+    const updated = await getLeaveBalancesForUser(staff.id);
+    setDetailsMap((prev) => {
+      const current = prev[staff.id];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [staff.id]: {
+          ...current,
+          leaveBalances: updated,
+        },
+      };
+    });
   }
 
   async function handleLeaveSubmit(e: React.FormEvent) {
@@ -113,8 +198,29 @@ export default function StaffDetailPage() {
     if (result.success) {
       setLeaveModal(false);
       setLeaveForm({ leave_type: 'annual', start_date: '', end_date: '', reason: '' });
+      await refreshLeaveBalances();
     } else {
       alert(result.error || 'Failed to submit leave request');
+    }
+  }
+
+  async function handleReviewApproval(lr: { id: string }) {
+    if (!confirm('Approve this leave request?')) return;
+    const result = await reviewLeaveRequest(lr.id, 'approved', 'Approved');
+    if (result.success) {
+      await refreshLeaveBalances();
+    } else {
+      alert(result.error || 'Failed to approve leave request');
+    }
+  }
+
+  async function handleReviewRejection(lr: { id: string }) {
+    if (!confirm('Reject this leave request?')) return;
+    const result = await reviewLeaveRequest(lr.id, 'rejected', 'Rejected');
+    if (result.success) {
+      await refreshLeaveBalances();
+    } else {
+      alert(result.error || 'Failed to reject leave request');
     }
   }
 
@@ -257,11 +363,14 @@ export default function StaffDetailPage() {
           {activeTab === 'Leave' && (
             <div className={styles.section}>
               <div className={styles.sectionHeader}>
-                <h3 className={styles.sectionTitle}>Leave Balances</h3>
-                {(isCeo || isOwnProfile) && (
-                  <button className={styles.actionBtn} onClick={() => setLeaveModal(true)}>Request Leave</button>
-                )}
+                <h3 className={styles.sectionTitle}>Leave Requests</h3>
+                <button className={styles.actionBtn} onClick={() => setLeaveModal(true)}>+ Submit Leave Request</button>
               </div>
+
+              {leaveLoading ? (
+                <p style={{ color: 'var(--color-text-muted)' }}>Loading leave requests...</p>
+              ) : (
+                <>
 
               <div className={styles.statsGrid}>
                 {leaveBalances.length === 0 ? (
@@ -290,11 +399,12 @@ export default function StaffDetailPage() {
                       <th>Days</th>
                       <th>Reason</th>
                       <th>Status</th>
+                      {isReviewer && <th>Actions</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {leaveRequests.length === 0 ? (
-                      <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No leave requests found</td></tr>
+                      <tr><td colSpan={isReviewer ? 6 : 5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No leave requests found</td></tr>
                     ) : leaveRequests.map((lr) => (
                       <tr key={lr.id} className={styles.row}>
                         <td><span className={styles.leaveTypeBadge}>{lr.leave_type}</span></td>
@@ -311,15 +421,28 @@ export default function StaffDetailPage() {
                             {lr.status.charAt(0).toUpperCase() + lr.status.slice(1)}
                           </span>
                         </td>
+                        {isReviewer && (
+                          <td>
+                            {lr.status === 'pending' ? (
+                              <div className={styles.leaveActions}>
+                                <button className={styles.approveBtn} onClick={() => void handleReviewApproval(lr)}>Approve</button>
+                                <button className={styles.rejectBtn} onClick={() => void handleReviewRejection(lr)}>Reject</button>
+                              </div>
+                            ) : (
+                              <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+                </>
+              )}
             </div>
           )}
 
-          {/* ── Attendance Tab ── */}
           {activeTab === 'Attendance' && (
             <div className={styles.section}>
               <h3 className={styles.sectionTitle}>Attendance Records</h3>

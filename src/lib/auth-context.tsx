@@ -17,16 +17,8 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-
-/* ============================================================
-   Type Definitions
-   ============================================================ */
-
-/**
- * Union type for the five application roles.
- * Drives navigation, dashboard selection, and RLS policies.
- */
-export type UserRole = 'super_admin' | 'sales_rep' | 'finance_manager' | 'inventory_manager' | 'ceo';
+import type { UserRole } from '@/lib/types';
+import type { AuthChangeEvent, Session, Subscription } from '@supabase/supabase-js';
 
 /**
  * Represents an authenticated user within AlbionOS.
@@ -65,6 +57,10 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string) => Promise<{ success: boolean; error?: string }>;
   /** Send a password-reset email via Supabase Auth */
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  /** True when the current session is a password-recovery session (user clicked the reset link) */
+  hasRecoverySession: boolean;
+  /** Set a new password during a recovery session */
+  updatePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
   /** Log out and clear the Supabase session */
   logout: () => void;
   /** Dev helper: switch user (re-login as another user) */
@@ -72,19 +68,19 @@ interface AuthContextType {
 }
 
 /* ============================================================
-   Quick-login credentials for development
-   Used by the login page's "Quick Login" buttons
+   Demo quick-login credentials (development only)
+   Gated behind NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true so production
+   bundles never ship demo credentials or the mock fallback.
    ============================================================ */
-const QUICK_LOGIN_USERS = [
-  { email: 'admin@albionpharma.com', label: 'Dr. Emeka (Admin)', role: 'super_admin' as UserRole },
-  { email: 'ceo@albionpharma.com', label: 'Chief Executive (CEO)', role: 'ceo' as UserRole },
-  { email: 'chidi@albionpharma.com', label: 'Chidi (Sales)', role: 'sales_rep' as UserRole },
-  { email: 'ngozi@albionpharma.com', label: 'Ngozi (Finance)', role: 'finance_manager' as UserRole },
-  { email: 'tunde@albionpharma.com', label: 'Tunde (Inventory)', role: 'inventory_manager' as UserRole },
-];
+export const ENABLE_DEMO_LOGIN =
+  process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN === 'true';
+
+const QUICK_LOGIN_USERS = ENABLE_DEMO_LOGIN
+  ? [{ email: 'admin@albionpharma.com', label: 'Superadmin(CEO)', role: 'super_admin' as UserRole }]
+  : [];
 
 /** Shared dev password — all demo accounts use this */
-const DEV_PASSWORD = 'AlbionTest123!';
+const DEV_PASSWORD = ENABLE_DEMO_LOGIN ? 'AlbionTest123!' : '';
 
 /* ============================================================
    Context & Provider
@@ -139,9 +135,30 @@ async function fetchProfile(userId: string): Promise<AuthUser | null> {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasRecoverySession, setHasRecoverySession] = useState(false);
+
+  const IS_MOCK_MODE = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
 
   /* ── Restore session on mount + listen for auth changes ── */
   useEffect(() => {
+    /* If in mock mode, restore from localStorage */
+    if (IS_MOCK_MODE) {
+      /* Defer state updates out of the synchronous effect body — the React
+         compiler linter forbids calling setState directly within an effect. */
+      queueMicrotask(() => {
+        try {
+          const stored = localStorage.getItem('albion_os_user');
+          if (stored) {
+            setUser(JSON.parse(stored));
+          }
+        } catch {
+          // Ignore localStorage parse errors
+        }
+        setIsLoading(false);
+      });
+      return;
+    }
+
     const supabase = createClient();
 
     /* Check for existing session */
@@ -152,10 +169,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           /* Session exists — fetch the profile from our profiles table */
           const profile = await fetchProfile(session.user.id);
-          setUser(profile);
+          if (profile) setUser(profile);
         }
-      } catch (err) {
-        console.error('[Auth] Session restore error:', err);
+
+        /* Detect a password-recovery link (supabase-js appends #type=recovery to the URL) */
+        try {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          if (hashParams.get('type') === 'recovery') {
+            setHasRecoverySession(true);
+          }
+        } catch {
+          // Ignore URL parse failures
+        }
+      } catch {
+        console.warn('[Auth] Supabase session check skipped.');
       } finally {
         setIsLoading(false);
       }
@@ -163,101 +190,193 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initSession();
 
-    /* Listen for auth state changes (sign in, sign out, token refresh) */
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          const profile = await fetchProfile(session.user.id);
-          setUser(profile);
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
+    /* Listen for auth state changes */
+    let subscription: Subscription | null = null;
+    try {
+      const res = supabase.auth.onAuthStateChange(
+        async (event: AuthChangeEvent, session: Session | null) => {
+          if (event === 'SIGNED_IN' && session?.user) {
+            const profile = await fetchProfile(session.user.id);
+            if (profile) setUser(profile);
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null);
+            setHasRecoverySession(false);
+          } else if (event === 'PASSWORD_RECOVERY') {
+            setHasRecoverySession(true);
+          }
         }
-      }
-    );
+      );
+      subscription = res.data.subscription;
+    } catch {
+      // Ignore listener error when Supabase URL is invalid
+    }
 
-    /* Cleanup subscription on unmount */
-    return () => { subscription.unsubscribe(); };
-  }, []);
+    return () => { subscription?.unsubscribe(); };
+  }, [IS_MOCK_MODE]);
 
-  /* ── Sign Up via Supabase Auth ── */
+  /* ── Sign Up ── */
   const signUp = useCallback(async (email: string, password: string, fullName: string) => {
     setIsLoading(true);
-    const supabase = createClient();
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName },
-      },
-    });
-
-    if (error) {
+    if (IS_MOCK_MODE) {
+      const newUser: AuthUser = {
+        id: `mock-${Date.now()}`,
+        email,
+        full_name: fullName || email.split('@')[0],
+        role: 'super_admin',
+        location_id: 'loc-1',
+        location_name: 'Lagos Headquarters',
+        avatar_url: null,
+        phone: '+234 800 123 4567',
+      };
+      try { localStorage.setItem('albion_os_user', JSON.stringify(newUser)); } catch {}
+      setUser(newUser);
       setIsLoading(false);
-      return { success: false, error: error.message };
+      return { success: true };
     }
 
-    if (data.user) {
-      const profile = await fetchProfile(data.user.id);
-      if (profile) {
-        setUser(profile);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName } },
+      });
+
+      if (!error && data.user) {
+        const profile = await fetchProfile(data.user.id);
+        if (profile) {
+          setUser(profile);
+          setIsLoading(false);
+          return { success: true };
+        }
       }
+    } catch {
+      // Fallback
     }
 
     setIsLoading(false);
-    return { success: true };
-  }, []);
+    return { success: false, error: 'Sign up failed or database unreachable.' };
+  }, [IS_MOCK_MODE]);
 
-  /* ── Password Reset via Supabase Auth ── */
+  /* ── Password Reset ── */
   const resetPassword = useCallback(async (email: string) => {
-    const supabase = createClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login`,
-    });
+    if (IS_MOCK_MODE) return { success: true };
 
-    if (error) return { success: false, error: error.message };
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/forgot-password`,
+      });
+
+      if (!error) return { success: true };
+    } catch {
+      // Fallback
+    }
     return { success: true };
-  }, []);
+  }, [IS_MOCK_MODE]);
 
-  /* ── Login via Supabase Auth ── */
+  /* ── Update Password (recovery session) ── */
+  const updatePassword = useCallback(async (newPassword: string) => {
+    if (IS_MOCK_MODE) return { success: true };
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      setHasRecoverySession(false);
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Failed to update password. Please try again.' };
+    }
+  }, [IS_MOCK_MODE]);
+
+  /* ── Login ── */
   const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true);
-    const supabase = createClient();
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    if (IS_MOCK_MODE) {
+      const mockMatch = QUICK_LOGIN_USERS.find(
+        (u) => u.email.toLowerCase() === email.toLowerCase()
+      );
 
-    if (error) {
+      const mockUser: AuthUser = {
+        id: mockMatch ? `mock-${mockMatch.role}` : `mock-user-${Date.now()}`,
+        email: mockMatch ? mockMatch.email : email,
+        full_name: mockMatch ? mockMatch.label : email.split('@')[0],
+        role: (mockMatch?.role as UserRole) || 'super_admin',
+        location_id: 'loc-1',
+        location_name: 'Lagos Headquarters',
+        avatar_url: null,
+        phone: '+234 800 123 4567',
+      };
+
+      try { localStorage.setItem('albion_os_user', JSON.stringify(mockUser)); } catch {}
+      setUser(mockUser);
       setIsLoading(false);
-      return { success: false, error: error.message };
+      return { success: true };
     }
 
-    if (data.user) {
-      /* Auth succeeded — now fetch the profile for role/location info */
-      const profile = await fetchProfile(data.user.id);
-      if (profile) {
-        setUser(profile);
-        setIsLoading(false);
-        return { success: true };
-      } else {
-        /* Auth worked but no profile row exists — shouldn't happen with seeded data */
-        setIsLoading(false);
-        return { success: false, error: 'User profile not found. Contact your admin.' };
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (!error && data.user) {
+        const profile = await fetchProfile(data.user.id);
+        if (profile) {
+          setUser(profile);
+          setIsLoading(false);
+          return { success: true };
+        }
       }
+    } catch (fetchErr) {
+      console.warn('[Auth] Supabase auth network error, attempting demo fallback:', fetchErr);
+    }
+
+    /* Fallback if Supabase call fails — only allowed when demo login
+       is explicitly enabled (NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true). */
+    if (ENABLE_DEMO_LOGIN) {
+      const mockMatch = QUICK_LOGIN_USERS.find(
+        (u) => u.email.toLowerCase() === email.toLowerCase()
+      );
+
+      const fallbackUser: AuthUser = {
+        id: mockMatch ? `mock-${mockMatch.role}` : `mock-user-${Date.now()}`,
+        email: mockMatch ? mockMatch.email : email,
+        full_name: mockMatch ? mockMatch.label : email.split('@')[0],
+        role: (mockMatch?.role as UserRole) || 'super_admin',
+        location_id: 'loc-1',
+        location_name: 'Lagos Headquarters',
+        avatar_url: null,
+        phone: '+234 800 123 4567',
+      };
+
+      try { localStorage.setItem('albion_os_user', JSON.stringify(fallbackUser)); } catch {}
+      setUser(fallbackUser);
+      setIsLoading(false);
+      return { success: true };
     }
 
     setIsLoading(false);
-    return { success: false, error: 'Login failed. Please try again.' };
-  }, []);
+    return { success: false, error: 'Unable to sign in. Please try again.' };
+  }, [IS_MOCK_MODE]);
 
-  /* ── Logout via Supabase Auth ── */
+  /* ── Logout ── */
   const logout = useCallback(async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    try { localStorage.removeItem('albion_os_user'); } catch {}
+    if (!IS_MOCK_MODE) {
+      try {
+        const supabase = createClient();
+        await supabase.auth.signOut();
+      } catch {}
+    }
     setUser(null);
-  }, []);
+  }, [IS_MOCK_MODE]);
 
   /* ── Switch User (dev helper) — logs in as another demo user ── */
   const switchUser = useCallback(async (userId: string) => {
@@ -269,7 +388,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [login]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signUp, resetPassword, logout, switchUser }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signUp, resetPassword, hasRecoverySession, updatePassword, logout, switchUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -303,6 +422,14 @@ export function getRoleLabel(role: UserRole): string {
     finance_manager: 'Finance Manager',
     inventory_manager: 'Inventory Manager',
     ceo: 'Chief Executive Officer',
+    clinic_admin: 'Clinic Admin',
+    vet: 'Veterinarian',
+    vet_assistant: 'Vet Assistant',
+    receptionist: 'Receptionist',
+    vet_tech: 'Vet Technician',
+    regional_manager: 'Regional Manager',
+    security: 'Security',
+    lab_scientist: 'Lab Scientist',
   };
   return labels[role];
 }
@@ -315,6 +442,14 @@ export function getRoleColor(role: UserRole): string {
     finance_manager: 'var(--color-success)',
     inventory_manager: 'var(--color-warning)',
     ceo: 'var(--color-gold-dark)',
+    clinic_admin: 'var(--color-purple)',
+    vet: 'var(--color-teal)',
+    vet_assistant: 'var(--color-teal-light)',
+    receptionist: 'var(--color-pink)',
+    vet_tech: 'var(--color-orange)',
+    regional_manager: 'var(--color-indigo)',
+    security: 'var(--color-gray)',
+    lab_scientist: 'var(--color-blue)',
   };
   return colors[role];
 }
