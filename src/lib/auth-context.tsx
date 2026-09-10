@@ -31,8 +31,10 @@ export interface AuthUser {
   email: string;
   /** Display name from profiles.full_name */
   full_name: string;
-  /** The user's role — drives permissions everywhere */
+  /** The user's primary role */
   role: UserRole;
+  /** Array of all roles assigned to user (supports multi-role personnel) */
+  roles?: UserRole[];
   /** FK to locations table — scopes data visibility */
   location_id: string;
   /** Human-readable location name (joined from locations table) */
@@ -46,6 +48,140 @@ export interface AuthUser {
 /**
  * Shape of the auth context value consumed via useAuth().
  */
+export interface DemoProfile {
+  id?: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  roles?: UserRole[];
+  roleTitle: string;
+  location_name: string;
+  location_id: string;
+  description: string;
+  badgeColor: string;
+  icon: string;
+}
+
+export const DEMO_PROFILES: DemoProfile[] = [
+  {
+    id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    email: 'admin@albionpharma.com',
+    name: 'Dr. Emeka Moneke',
+    role: 'super_admin',
+    roles: ['super_admin', 'ceo'],
+    roleTitle: 'Super Admin (CEO)',
+    location_name: 'Lagos Headquarters',
+    location_id: 'loc-0001-onitsha-hq',
+    description: 'Master command over commercial pharma, clinic fleet & corporate governance',
+    badgeColor: '#0f766e',
+    icon: '👑',
+  },
+  {
+    id: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
+    email: 'chidi@albionpharma.com',
+    name: 'Chidi Okafor',
+    role: 'sales_rep',
+    roles: ['sales_rep'],
+    roleTitle: 'Sales Representative',
+    location_name: 'Lagos Commercial Territory',
+    location_id: 'loc-0002-lagos-territory',
+    description: 'Field sales orders, customer accounts, territory stock & targets',
+    badgeColor: '#0284c7',
+    icon: '💼',
+  },
+  {
+    id: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
+    email: 'ngozi@albionpharma.com',
+    name: 'Ngozi Eze',
+    role: 'finance_manager',
+    roles: ['finance_manager'],
+    roleTitle: 'Finance Manager',
+    location_name: 'Onitsha HQ',
+    location_id: 'loc-0001-onitsha-hq',
+    description: 'Receivables, payment approval queue, payroll runs & audit trails',
+    badgeColor: '#16a34a',
+    icon: '💰',
+  },
+  {
+    id: 'd4e5f6a7-b8c9-0123-defa-234567890123',
+    email: 'tunde@albionpharma.com',
+    name: 'Tunde Adeyemi',
+    role: 'inventory_manager',
+    roles: ['inventory_manager'],
+    roleTitle: 'Inventory Manager',
+    location_name: 'Central Distribution Warehouse',
+    location_id: 'loc-0001-onitsha-hq',
+    description: 'Warehouse stocks, batch expirations, rep allocations & suppliers',
+    badgeColor: '#d97706',
+    icon: '📦',
+  },
+  {
+    id: 'c1b2c3d4-e5f6-7890-abcd-ef1234567891',
+    email: 'clinicadmin@albionpharma.com',
+    name: 'Dr. Kalu Okonkwo',
+    role: 'clinic_admin',
+    roles: ['clinic_admin', 'vet'],
+    roleTitle: 'Clinic Admin & Clinician',
+    location_name: 'Albion Pet Clinic - Lekki Branch',
+    location_id: 'loc-0005-lekki-clinic',
+    description: 'Dual role: Practice administration, staff roster, plus clinical treatments',
+    badgeColor: '#8b5cf6',
+    icon: '🏥',
+  },
+  {
+    id: 'c2b2c3d4-e5f6-7890-abcd-ef1234567892',
+    email: 'vet@albionpharma.com',
+    name: 'Dr. Amaka Bello, DVM',
+    role: 'vet',
+    roles: ['vet'],
+    roleTitle: 'Attending Veterinarian',
+    location_name: 'Albion Pet Clinic - Onitsha Central',
+    location_id: 'loc-0004-onitsha-clinic',
+    description: 'Patient consultations, surgical cases, treatment plans & triage queue',
+    badgeColor: '#0d9488',
+    icon: '🩺',
+  },
+  {
+    id: 'c3b2c3d4-e5f6-7890-abcd-ef1234567893',
+    email: 'reception@albionpharma.com',
+    name: 'Chioma Eze',
+    role: 'receptionist',
+    roles: ['receptionist'],
+    roleTitle: 'Front Desk & Patient Intake',
+    location_name: 'Albion Pet Clinic - Lekki Branch',
+    location_id: 'loc-0005-lekki-clinic',
+    description: 'Patient check-in, live waiting queue, appointment booking & billing',
+    badgeColor: '#ec4899',
+    icon: '📋',
+  },
+  {
+    id: 'c4b2c3d4-e5f6-7890-abcd-ef1234567894',
+    email: 'lab@albionpharma.com',
+    name: 'Babatunde Adeleke',
+    role: 'lab_scientist',
+    roles: ['lab_scientist'],
+    roleTitle: 'Diagnostic Lab Scientist',
+    location_name: 'Central Diagnostic Laboratory',
+    location_id: 'loc-0001-onitsha-hq',
+    description: 'Sample processing, pathology reports, hematology & lab diagnostics',
+    badgeColor: '#2563eb',
+    icon: '🔬',
+  },
+  {
+    id: 'c5b2c3d4-e5f6-7890-abcd-ef1234567895',
+    email: 'vettech@albionpharma.com',
+    name: 'Ibrahim Musa',
+    role: 'vet_tech',
+    roles: ['vet_tech', 'vet_assistant'],
+    roleTitle: 'Veterinary Technician',
+    location_name: 'Albion Pet Clinic - Lekki Branch',
+    location_id: 'loc-0005-lekki-clinic',
+    description: 'Inpatient vitals, medication administration, ICU monitoring & care',
+    badgeColor: '#f97316',
+    icon: '🐾',
+  },
+];
+
 interface AuthContextType {
   /** Current user or null if not authenticated */
   user: AuthUser | null;
@@ -53,6 +189,8 @@ interface AuthContextType {
   isLoading: boolean;
   /** Log in with email + password via Supabase Auth */
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  /** 1-click instant demo profile login */
+  loginAsDemo: (profile: DemoProfile) => Promise<{ success: boolean; error?: string }>;
   /** Sign up a new user via Supabase Auth */
   signUp: (email: string, password: string, fullName: string) => Promise<{ success: boolean; error?: string }>;
   /** Send a password-reset email via Supabase Auth */
@@ -68,19 +206,19 @@ interface AuthContextType {
 }
 
 /* ============================================================
-   Demo quick-login credentials (development only)
-   Gated behind NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true so production
-   bundles never ship demo credentials or the mock fallback.
+   Demo quick-login credentials (active by default)
    ============================================================ */
 export const ENABLE_DEMO_LOGIN =
-  process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN === 'true';
+  process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN !== 'false';
 
-const QUICK_LOGIN_USERS = ENABLE_DEMO_LOGIN
-  ? [{ email: 'admin@albionpharma.com', label: 'Superadmin(CEO)', role: 'super_admin' as UserRole }]
-  : [];
+const QUICK_LOGIN_USERS = DEMO_PROFILES.map((p) => ({
+  email: p.email,
+  label: `${p.name} (${p.roleTitle})`,
+  role: p.role,
+}));
 
 /** Shared dev password — all demo accounts use this */
-const DEV_PASSWORD = ENABLE_DEMO_LOGIN ? 'AlbionTest123!' : '';
+const DEV_PASSWORD = 'AlbionTest123!';
 
 /* ============================================================
    Context & Provider
@@ -169,7 +307,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           /* Session exists — fetch the profile from our profiles table */
           const profile = await fetchProfile(session.user.id);
-          if (profile) setUser(profile);
+          if (profile) {
+            setUser(profile);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        /* Check for persisted demo session */
+        try {
+          const stored = localStorage.getItem('albion_os_user');
+          if (stored) {
+            setUser(JSON.parse(stored));
+          }
+        } catch {
+          // Ignore localStorage parse errors
         }
 
         /* Detect a password-recovery link (supabase-js appends #type=recovery to the URL) */
@@ -183,6 +335,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         console.warn('[Auth] Supabase session check skipped.');
+        try {
+          const stored = localStorage.getItem('albion_os_user');
+          if (stored) {
+            setUser(JSON.parse(stored));
+          }
+        } catch {}
       } finally {
         setIsLoading(false);
       }
@@ -338,9 +496,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.warn('[Auth] Supabase auth network error, attempting demo fallback:', fetchErr);
     }
 
-    /* Fallback if Supabase call fails — only allowed when demo login
-       is explicitly enabled (NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true). */
+    /* Fallback if Supabase call fails — check demo profiles */
     if (ENABLE_DEMO_LOGIN) {
+      const demoMatch = DEMO_PROFILES.find(
+        (p) => p.email.toLowerCase() === email.toLowerCase()
+      );
+      if (demoMatch) {
+        return loginAsDemo(demoMatch);
+      }
+
       const mockMatch = QUICK_LOGIN_USERS.find(
         (u) => u.email.toLowerCase() === email.toLowerCase()
       );
@@ -366,6 +530,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: false, error: 'Unable to sign in. Please try again.' };
   }, [IS_MOCK_MODE]);
 
+  /* ── 1-Click Instant Demo Login ── */
+  const loginAsDemo = useCallback(async (profile: DemoProfile) => {
+    setIsLoading(true);
+    const demoUser: AuthUser = {
+      id: profile.id || `mock-${profile.role}`,
+      email: profile.email,
+      full_name: profile.name,
+      role: profile.role,
+      roles: profile.roles || [profile.role],
+      location_id: profile.location_id,
+      location_name: profile.location_name,
+      avatar_url: null,
+      phone: '+234 800 123 4567',
+    };
+
+    try {
+      localStorage.setItem('albion_os_user', JSON.stringify(demoUser));
+    } catch {
+      // Ignore localStorage error
+    }
+
+    setUser(demoUser);
+    setIsLoading(false);
+    return { success: true };
+  }, []);
+
   /* ── Logout ── */
   const logout = useCallback(async () => {
     try { localStorage.removeItem('albion_os_user'); } catch {}
@@ -381,14 +571,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /* ── Switch User (dev helper) — logs in as another demo user ── */
   const switchUser = useCallback(async (userId: string) => {
     /* Find the quick-login user by checking their email */
+    const demoProfile = DEMO_PROFILES.find((p) => p.email === userId);
+    if (demoProfile) {
+      await loginAsDemo(demoProfile);
+      return;
+    }
     const quickUser = QUICK_LOGIN_USERS.find((u) => u.email === userId);
     if (quickUser) {
       await login(quickUser.email, DEV_PASSWORD);
     }
-  }, [login]);
+  }, [login, loginAsDemo]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signUp, resetPassword, hasRecoverySession, updatePassword, logout, switchUser }}>
+    <AuthContext.Provider value={{ user, isLoading, login, loginAsDemo, signUp, resetPassword, hasRecoverySession, updatePassword, logout, switchUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -430,6 +625,8 @@ export function getRoleLabel(role: UserRole): string {
     regional_manager: 'Regional Manager',
     security: 'Security',
     lab_scientist: 'Lab Scientist',
+    pharmacist: 'Clinical Pharmacist',
+    support_staff: 'Support Staff',
   };
   return labels[role];
 }
@@ -450,8 +647,23 @@ export function getRoleColor(role: UserRole): string {
     regional_manager: 'var(--color-indigo)',
     security: 'var(--color-gray)',
     lab_scientist: 'var(--color-blue)',
+    pharmacist: 'var(--color-blue)',
+    support_staff: 'var(--color-gray)',
   };
   return colors[role];
+}
+
+
+/**
+ * Checks if a user possesses a specific role, checking both primary role and multi-role array.
+ * Super admins and CEOs possess universal access across all role features.
+ */
+export function hasRole(user: AuthUser | null, targetRole: UserRole): boolean {
+  if (!user) return false;
+  if (user.role === 'super_admin' || user.role === 'ceo') return true;
+  if (user.roles && (user.roles.includes('super_admin') || user.roles.includes('ceo'))) return true;
+  if (user.roles && user.roles.includes(targetRole)) return true;
+  return user.role === targetRole;
 }
 
 /* Export quick-login data for the login page */

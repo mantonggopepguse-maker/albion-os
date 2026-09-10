@@ -30,11 +30,71 @@
 /* ────────────────────────────────────────────
    Dependencies
    ──────────────────────────────────────────── */
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { AuthProvider, useAuth, QUICK_LOGIN_USERS, DEV_PASSWORD, ENABLE_DEMO_LOGIN } from '@/lib/auth-context';
+import { AuthProvider, useAuth, DEMO_PROFILES, DemoProfile, QUICK_LOGIN_USERS, DEV_PASSWORD, ENABLE_DEMO_LOGIN } from '@/lib/auth-context';
 import styles from './login.module.css';
+
+/* ────────────────────────────────────────────
+   Clinic Demo Profiles (Cross-App Handoff)
+   ──────────────────────────────────────────── */
+const CLINIC_DEMO_USERS = [
+  {
+    role: 'Super Admin',
+    name: 'Dr. Emeka Moneke',
+    systemRole: 'SUPER_ADMIN',
+    email: 'superadmin@albionpetclinic.com',
+    icon: '👑',
+    badgeColor: '#7c3aed',
+    desc: 'Multi-clinic & system config'
+  },
+  {
+    role: 'Clinic Admin',
+    name: 'Dr. Kalu Okonkwo',
+    systemRole: 'Admin',
+    email: 'admin@albionpetclinic.com',
+    icon: '🏢',
+    badgeColor: '#0f766e',
+    desc: 'Clinic ops, staff & financials'
+  },
+  {
+    role: 'Veterinarian',
+    name: 'Dr. Amaka Bello, DVM',
+    systemRole: 'Veterinarian',
+    email: 'vet@albionpetclinic.com',
+    icon: '🩺',
+    badgeColor: '#059669',
+    desc: 'Treatments, surgery & AI hub'
+  },
+  {
+    role: 'Receptionist',
+    name: 'Chioma Eze',
+    systemRole: 'Receptionist',
+    email: 'reception@albionpetclinic.com',
+    icon: '📋',
+    badgeColor: '#0284c7',
+    desc: 'Queue, appointments & POS'
+  },
+  {
+    role: 'Lab Scientist',
+    name: 'Babatunde Adeleke',
+    systemRole: 'Lab Scientist',
+    email: 'lab@albionpetclinic.com',
+    icon: '🧪',
+    badgeColor: '#4f46e5',
+    desc: 'Lab hub, tests & pathology'
+  },
+  {
+    role: 'Vet Technician',
+    name: 'Ibrahim Musa',
+    systemRole: 'Vet Tech',
+    email: 'vettech@albionpetclinic.com',
+    icon: '❤️',
+    badgeColor: '#e11d48',
+    desc: 'ICU board & patient vitals'
+  },
+];
 
 /* ────────────────────────────────────────────
    LoginForm — Internal form component
@@ -54,10 +114,41 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeDemoEmail, setActiveDemoEmail] = useState<string | null>(null);
+  const [workspaceTab, setWorkspaceTab] = useState<'PHARMA' | 'CLINIC'>('PHARMA');
 
   /* ── Auth context & router ── */
-  const { login } = useAuth();
+  const { login, loginAsDemo } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  /* ── Auto-login on incoming ?demo_role=... ── */
+  useEffect(() => {
+    const demoRole = searchParams.get('demo_role');
+    if (demoRole) {
+      const normalized = demoRole.toLowerCase();
+      const matchedProfile = DEMO_PROFILES.find(
+        (p) => p.role.toLowerCase() === normalized || p.email.toLowerCase().includes(normalized)
+      );
+      if (matchedProfile) {
+        handleDemoLogin(matchedProfile);
+      }
+    }
+  }, [searchParams]);
+
+  /* ── Clinic handoff redirect helper ── */
+  const getClinicBaseUrl = () => {
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return 'http://localhost:5173';
+    }
+    return 'https://albionpetclinic-180033031286.us-central1.run.app';
+  };
+
+  const handleClinicHandoff = (demo: typeof CLINIC_DEMO_USERS[0]) => {
+    setIsSubmitting(true);
+    const baseUrl = getClinicBaseUrl();
+    window.location.href = `${baseUrl}/?demo_role=${encodeURIComponent(demo.systemRole)}`;
+  };
 
   /* ── Form Handlers ── */
 
@@ -85,6 +176,30 @@ function LoginForm() {
     } else {
       setError(result.error || 'Login failed');
       setIsSubmitting(false);
+    }
+  };
+
+  /**
+   * handleDemoLogin — 1-click instant demo profile authentication.
+   * Directly sets the authenticated user role and loads their dashboard.
+   */
+  const handleDemoLogin = async (profile: DemoProfile) => {
+    setError('');
+    setActiveDemoEmail(profile.email);
+    setIsSubmitting(true);
+    try {
+      const result = await loginAsDemo(profile);
+      if (result.success) {
+        router.push('/dashboard');
+      } else {
+        setError(result.error || 'Failed to login as demo user');
+        setIsSubmitting(false);
+        setActiveDemoEmail(null);
+      }
+    } catch {
+      setError('An error occurred during demo login');
+      setIsSubmitting(false);
+      setActiveDemoEmail(null);
     }
   };
 
@@ -223,44 +338,137 @@ function LoginForm() {
                 Forgot password?
               </Link>
             </div>
-
-
           </form>
 
-          {/* ── Quick Login Section ──
-               Demo account buttons for development. Each button auto-fills
-               the corresponding credentials and logs in directly when clicked.
-               Only rendered when NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true. */}
+          {/* ── Quick Login Section (Demo Accounts) ──
+               1-click instant access for all 11 enterprise & clinical roles. */}
           {ENABLE_DEMO_LOGIN && (
             <div className={styles.quickLogin}>
-              <p className={styles.quickLoginTitle}>Quick Login (Demo)</p>
-              <div className={styles.quickLoginGrid}>
-                {QUICK_LOGIN_USERS.map((user) => (
-                  <button
-                    key={user.email}
-                    type="button"
-                    className={styles.quickLoginBtn}
-                    disabled={isSubmitting}
-                    onClick={async (e) => {
-                      e.preventDefault();
-                      setEmail(user.email);
-                      setPassword('');
-                      setIsSubmitting(true);
-                      setError('');
-                      const result = await login(user.email, DEV_PASSWORD);
-                      if (result.success) {
-                        router.push('/dashboard');
-                      } else {
-                        setError(result.error || 'Login failed');
-                        setIsSubmitting(false);
-                      }
-                    }}
-                  >
-                    <span className={styles.quickLoginName}>{user.label}</span>
-                    <span className={styles.quickLoginRole}>{user.role}</span>
-                  </button>
-                ))}
+              <div className={styles.quickLoginHeader}>
+                <p className={styles.quickLoginTitle}>Unified 1-Click Access</p>
+                <span className={styles.quickLoginBadge}>All 11 Roles</span>
               </div>
+              <p className={styles.quickLoginSubtitle}>
+                Select any profile below to immediately explore that role&apos;s functions across both suites:
+              </p>
+
+              {/* Workspace Segmented Tabs */}
+              <div className={styles.workspaceTabs}>
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceTab('PHARMA')}
+                  className={`${styles.workspaceTab} ${workspaceTab === 'PHARMA' ? styles.workspaceTabActive : ''}`}
+                >
+                  💊 Pharma OS (5)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceTab('CLINIC')}
+                  className={`${styles.workspaceTab} ${workspaceTab === 'CLINIC' ? styles.workspaceTabActive : ''}`}
+                >
+                  🐾 Clinic Fleet (6)
+                </button>
+              </div>
+
+              {/* Tab 1: Pharma OS Profiles (Current App) */}
+              {workspaceTab === 'PHARMA' && (
+                <div className={styles.quickLoginGrid}>
+                  {DEMO_PROFILES.map((profile) => (
+                    <button
+                      key={profile.email}
+                      type="button"
+                      className={styles.demoCard}
+                      disabled={isSubmitting}
+                      onClick={() => handleDemoLogin(profile)}
+                      title={`Log in as ${profile.name} (${profile.roleTitle})`}
+                    >
+                      <div className={styles.demoCardLeft}>
+                        <div
+                          className={styles.demoCardIcon}
+                          style={{
+                            background: `${profile.badgeColor}18`,
+                            border: `1px solid ${profile.badgeColor}33`,
+                          }}
+                        >
+                          {profile.icon}
+                        </div>
+                        <div className={styles.demoCardContent}>
+                          <div className={styles.demoCardTop}>
+                            <span className={styles.demoCardName}>{profile.name}</span>
+                            <span
+                              className={styles.demoCardRoleTag}
+                              style={{
+                                background: `${profile.badgeColor}15`,
+                                color: profile.badgeColor,
+                              }}
+                            >
+                              {profile.roleTitle}
+                            </span>
+                          </div>
+                          <span className={styles.demoCardDesc}>{profile.description}</span>
+                        </div>
+                      </div>
+                      <div className={styles.demoCardAction}>
+                        {activeDemoEmail === profile.email ? (
+                          <span className={styles.spinner} style={{ width: 14, height: 14, borderWidth: 2 }} />
+                        ) : (
+                          '→'
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Tab 2: Clinic Profiles (Handoff to Pet Clinic App) */}
+              {workspaceTab === 'CLINIC' && (
+                <div className={styles.quickLoginGrid}>
+                  {CLINIC_DEMO_USERS.map((demo) => (
+                    <button
+                      key={demo.email}
+                      type="button"
+                      className={`${styles.demoCard} ${styles.clinicDemoCard}`}
+                      disabled={isSubmitting}
+                      onClick={() => handleClinicHandoff(demo)}
+                      title={`1-Click handoff to Albion Pet Clinic as ${demo.name} (${demo.role})`}
+                    >
+                      <div className={styles.demoCardLeft}>
+                        <div
+                          className={styles.demoCardIcon}
+                          style={{
+                            background: `${demo.badgeColor}18`,
+                            border: `1px solid ${demo.badgeColor}33`,
+                          }}
+                        >
+                          {demo.icon}
+                        </div>
+                        <div className={styles.demoCardContent}>
+                          <div className={styles.demoCardTop}>
+                            <span className={styles.demoCardName}>{demo.name}</span>
+                            <span
+                              className={styles.demoCardRoleTag}
+                              style={{
+                                background: `${demo.badgeColor}15`,
+                                color: demo.badgeColor,
+                              }}
+                            >
+                              {demo.role}
+                            </span>
+                          </div>
+                          <span className={styles.demoCardDesc}>{demo.desc}</span>
+                        </div>
+                      </div>
+                      <div className={styles.demoCardAction}>
+                        {isSubmitting ? (
+                          <span className={styles.spinner} style={{ width: 14, height: 14, borderWidth: 2 }} />
+                        ) : (
+                          '→'
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -277,16 +485,17 @@ function LoginForm() {
 /**
  * LoginPage — the default export for the `/login` route.
  *
- * Wraps `LoginForm` inside an `<AuthProvider>` so that the `useAuth()`
- * hook works correctly. This is the same provider-wrapping pattern
- * used by `HomePage` and `DashboardLayout`.
+ * Wraps `LoginForm` inside an `<AuthProvider>` and `<Suspense>`
+ * so that `useAuth()` and `useSearchParams()` work seamlessly.
  *
  * @returns The auth-provider-wrapped login form.
  */
 export default function LoginPage() {
   return (
     <AuthProvider>
-      <LoginForm />
+      <Suspense fallback={<div className={styles.container} />}>
+        <LoginForm />
+      </Suspense>
     </AuthProvider>
   );
 }

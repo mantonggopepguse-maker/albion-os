@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Topbar from '@/components/layout/Topbar';
 import { useUsers, useLocations, findLocationById } from '@/hooks/use-supabase-data';
-import { getRoleLabel, useAuth } from '@/lib/auth-context';
+import { getRoleLabel, useAuth, hasRole } from '@/lib/auth-context';
 import { toggleUserStatus, updateStaffUser } from '@/lib/data-service';
 import { MOCK_USERS } from '@/lib/mock-data';
 import { createClient } from '@/lib/supabase/client';
@@ -26,7 +26,27 @@ const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
   regional_manager: 'badgeIndigo',
   security: 'badgeGray',
   lab_scientist: 'badgeBlue',
+  pharmacist: 'badgeBlue',
+  support_staff: 'badgeGray',
 };
+
+const ALL_ROLES: { value: UserRole; label: string }[] = [
+  { value: 'sales_rep', label: 'Sales Representative' },
+  { value: 'finance_manager', label: 'Finance Manager' },
+  { value: 'inventory_manager', label: 'Inventory Manager' },
+  { value: 'super_admin', label: 'Super Admin' },
+  { value: 'ceo', label: 'Chief Executive Officer' },
+  { value: 'clinic_admin', label: 'Clinic Admin' },
+  { value: 'vet', label: 'Veterinarian' },
+  { value: 'vet_tech', label: 'Vet Technician' },
+  { value: 'vet_assistant', label: 'Vet Assistant' },
+  { value: 'receptionist', label: 'Receptionist' },
+  { value: 'regional_manager', label: 'Regional Manager' },
+  { value: 'security', label: 'Security' },
+  { value: 'lab_scientist', label: 'Lab Scientist' },
+  { value: 'pharmacist', label: 'Pharmacist' },
+  { value: 'support_staff', label: 'Support Staff' },
+];
 
 export default function StaffPage() {
   const { users, loading, refetch } = useUsers();
@@ -41,11 +61,19 @@ export default function StaffPage() {
     full_name: '',
     password: '',
     role: 'sales_rep' as UserRole,
+    roles: ['sales_rep'] as UserRole[],
     location_id: '',
     phone: '',
   });
   const [editUser, setEditUser] = useState<User | null>(null);
-  const [editData, setEditData] = useState({ full_name: '', email: '', role: '' as UserRole, location_id: '', phone: '' });
+  const [editData, setEditData] = useState({
+    full_name: '',
+    email: '',
+    role: '' as UserRole,
+    roles: [] as UserRole[],
+    location_id: '',
+    phone: '',
+  });
 
   if (loading) {
     return (
@@ -58,7 +86,7 @@ export default function StaffPage() {
     );
   }
 
-  const isCeo = currentUser?.role === 'ceo' || currentUser?.role === 'super_admin';
+  const isCeo = hasRole(currentUser, 'ceo') || hasRole(currentUser, 'super_admin');
   const filteredUsers = showDeleted ? users : users.filter((u) => u.is_active !== false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -66,12 +94,15 @@ export default function StaffPage() {
     setModalError('');
     setSubmitting(true);
 
+    const effectiveRoles = Array.from(new Set([formData.role, ...formData.roles]));
+
     if (process.env.NEXT_PUBLIC_USE_MOCK === 'true') {
       const newUser: User = {
         id: `usr-${Date.now()}`,
         email: formData.email.trim().toLowerCase(),
         full_name: formData.full_name.trim(),
         role: formData.role,
+        roles: effectiveRoles,
         location_id: formData.location_id || null,
         phone: formData.phone.trim() || null,
         avatar_url: null,
@@ -80,7 +111,7 @@ export default function StaffPage() {
       };
       MOCK_USERS.unshift(newUser);
       setShowModal(false);
-      setFormData({ email: '', full_name: '', password: '', role: 'sales_rep', location_id: '', phone: '' });
+      setFormData({ email: '', full_name: '', password: '', role: 'sales_rep', roles: ['sales_rep'], location_id: '', phone: '' });
       await refetch();
       setSubmitting(false);
       return;
@@ -102,6 +133,7 @@ export default function StaffPage() {
     const { error: profileError } = await supabase.from('profiles').update({
       full_name: formData.full_name,
       role: formData.role,
+      roles: effectiveRoles,
       location_id: formData.location_id || null,
       phone: formData.phone || null,
     }).eq('id', signUpData.user.id);
@@ -110,7 +142,7 @@ export default function StaffPage() {
       setModalError(profileError.message);
     } else {
       setShowModal(false);
-      setFormData({ email: '', full_name: '', password: '', role: 'sales_rep', location_id: '', phone: '' });
+      setFormData({ email: '', full_name: '', password: '', role: 'sales_rep', roles: ['sales_rep'], location_id: '', phone: '' });
       await refetch();
     }
 
@@ -129,10 +161,12 @@ export default function StaffPage() {
 
   function openEdit(user: User) {
     setEditUser(user);
+    const initialRoles = user.roles && user.roles.length > 0 ? user.roles : [user.role];
     setEditData({
       full_name: user.full_name,
       email: user.email,
       role: user.role,
+      roles: initialRoles,
       location_id: user.location_id || '',
       phone: user.phone || '',
     });
@@ -145,10 +179,13 @@ export default function StaffPage() {
     setModalError('');
     setSubmitting(true);
 
+    const effectiveRoles = Array.from(new Set([editData.role, ...editData.roles]));
+
     const result = await updateStaffUser(editUser.id, {
       full_name: editData.full_name,
       email: editData.email,
       role: editData.role,
+      roles: effectiveRoles,
       location_id: editData.location_id || null,
       phone: editData.phone || null,
     });
@@ -276,9 +313,16 @@ export default function StaffPage() {
                     </td>
 
                     <td>
-                      <span className={`${styles.roleBadge} ${styles[badgeClass]}`}>
-                        {getRoleLabel(user.role as UserRole)}
-                      </span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '240px' }}>
+                        {(user.roles && user.roles.length > 0 ? user.roles : [user.role]).map((r) => {
+                          const bClass = ROLE_BADGE_CLASSES[r as UserRole] || 'badgeNavy';
+                          return (
+                            <span key={r} className={`${styles.roleBadge} ${styles[bClass]}`}>
+                              {getRoleLabel(r as UserRole)}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </td>
 
                     <td>
@@ -381,18 +425,88 @@ export default function StaffPage() {
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate)' }}>Role</label>
+            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate)' }}>Primary Role</label>
             <select
               value={formData.role}
-              onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })}
+              onChange={(e) => {
+                const newRole = e.target.value as UserRole;
+                setFormData((prev) => ({
+                  ...prev,
+                  role: newRole,
+                  roles: Array.from(new Set([newRole, ...prev.roles])),
+                }));
+              }}
               style={{ padding: '0.625rem 0.875rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontSize: '0.875rem', fontFamily: 'inherit', background: '#fff' }}
             >
-              <option value="sales_rep">Sales Representative</option>
-              <option value="finance_manager">Finance Manager</option>
-              <option value="inventory_manager">Inventory Manager</option>
-              <option value="super_admin">Super Admin</option>
-              <option value="ceo">CEO</option>
+              {ALL_ROLES.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
             </select>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate)' }}>
+                Concurrent / Additional Roles ({formData.roles.length})
+              </label>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                Multi-role access enabled
+              </span>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+              gap: '6px',
+              maxHeight: '140px',
+              overflowY: 'auto',
+              padding: '8px',
+              background: '#f8fafc',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border)',
+            }}>
+              {ALL_ROLES.map((r) => {
+                const isChecked = formData.roles.includes(r.value);
+                const isPrimary = formData.role === r.value;
+                return (
+                  <label
+                    key={r.value}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontSize: '0.8rem',
+                      cursor: isPrimary ? 'default' : 'pointer',
+                      padding: '4px 6px',
+                      borderRadius: '4px',
+                      background: isChecked ? 'rgba(15, 118, 110, 0.08)' : 'transparent',
+                      fontWeight: isChecked ? 600 : 400,
+                      color: isChecked ? 'var(--color-navy)' : 'var(--color-slate)',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      disabled={isPrimary}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormData((prev) => {
+                          const nextRoles = checked
+                            ? [...prev.roles, r.value]
+                            : prev.roles.filter((val) => val !== r.value);
+                          return { ...prev, roles: nextRoles };
+                        });
+                      }}
+                      style={{ accentColor: 'var(--color-navy)' }}
+                    />
+                    <span>{r.label}</span>
+                    {isPrimary && (
+                      <span style={{ fontSize: '0.65rem', background: '#0f766e', color: '#fff', padding: '1px 4px', borderRadius: '3px', marginLeft: 'auto' }}>
+                        Primary
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate)' }}>Location</label>
@@ -468,18 +582,88 @@ export default function StaffPage() {
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate)' }}>Role</label>
+            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate)' }}>Primary Role</label>
             <select
               value={editData.role}
-              onChange={(e) => setEditData({ ...editData, role: e.target.value as UserRole })}
+              onChange={(e) => {
+                const newRole = e.target.value as UserRole;
+                setEditData((prev) => ({
+                  ...prev,
+                  role: newRole,
+                  roles: Array.from(new Set([newRole, ...prev.roles])),
+                }));
+              }}
               style={{ padding: '0.625rem 0.875rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontSize: '0.875rem', fontFamily: 'inherit', background: '#fff' }}
             >
-              <option value="sales_rep">Sales Representative</option>
-              <option value="finance_manager">Finance Manager</option>
-              <option value="inventory_manager">Inventory Manager</option>
-              <option value="super_admin">Super Admin</option>
-              <option value="ceo">CEO</option>
+              {ALL_ROLES.map((r) => (
+                <option key={r.value} value={r.label ? r.value : r.value}>{r.label}</option>
+              ))}
             </select>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate)' }}>
+                Concurrent / Additional Roles ({editData.roles.length})
+              </label>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                Multi-role access enabled
+              </span>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+              gap: '6px',
+              maxHeight: '140px',
+              overflowY: 'auto',
+              padding: '8px',
+              background: '#f8fafc',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border)',
+            }}>
+              {ALL_ROLES.map((r) => {
+                const isChecked = editData.roles.includes(r.value);
+                const isPrimary = editData.role === r.value;
+                return (
+                  <label
+                    key={r.value}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontSize: '0.8rem',
+                      cursor: isPrimary ? 'default' : 'pointer',
+                      padding: '4px 6px',
+                      borderRadius: '4px',
+                      background: isChecked ? 'rgba(15, 118, 110, 0.08)' : 'transparent',
+                      fontWeight: isChecked ? 600 : 400,
+                      color: isChecked ? 'var(--color-navy)' : 'var(--color-slate)',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      disabled={isPrimary}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setEditData((prev) => {
+                          const nextRoles = checked
+                            ? [...prev.roles, r.value]
+                            : prev.roles.filter((val) => val !== r.value);
+                          return { ...prev, roles: nextRoles };
+                        });
+                      }}
+                      style={{ accentColor: 'var(--color-navy)' }}
+                    />
+                    <span>{r.label}</span>
+                    {isPrimary && (
+                      <span style={{ fontSize: '0.65rem', background: '#0f766e', color: '#fff', padding: '1px 4px', borderRadius: '3px', marginLeft: 'auto' }}>
+                        Primary
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate)' }}>Location</label>

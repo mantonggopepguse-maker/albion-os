@@ -1,0 +1,267 @@
+.page {
+  padding: var(--space-6);
+  animation: fadeIn 0.4s ease-out;
+  background-color: var(--color-bg);
+}
+
+.greeting {
+  margin-bottom: var(--space-6);
+}
+
+.greetingText {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-navy);
+  margin: 0 0 var(--space-1) 0;
+  background: linear-gradient(135deg, var(--color-navy) 0%, var(--color-gold-dark) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.greetingSub {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.posLayout {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: var(--space-6);
+  align-items: flex-start;
+}
+
+.card {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.85) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+.headerRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.searchBar {
+  flex: 1;
+}
+
+.searchInput {
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
+  background: white;
+  transition: all 0.2s ease;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--color-navy);
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+}
+
+.productCatalogGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: var(--space-2);
+}
+
+.productCard {
+  background: white;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.productCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-navy);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.productTitle {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-navy);
+  margin: 0 0 4px 0;
+}
+
+.productCategory {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.productPrice {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-gold-dark);
+  margin-top: 8px;
+}
+
+.narcoticTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+/* Cart Panel */
+.cartPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.cartList {
+  max-height: 280px;
+  overflow-y: auto;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.cartItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-bottom: 1px dashed #f1f5f9;
+}
+
+.cartQtyControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qtyBtn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #cbd5e1;
+  background: white;
+  border-radius: 4px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cartSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+}
+
+.totalRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--color-navy);
+  border-top: 2px solid #0f172a;
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.checkoutBtn {
+  width: 100%;
+  background: linear-gradient(135deg, #166534 0%, #15803d 100%);
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  margin-top: 12px;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.checkoutBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(22, 101, 52, 0.3);
+}
+
+.narcoticLockBoxBtn {
+  width: 100%;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: white;
+  border: none;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+/* Modal form */
+.formGroup {
+  margin-bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-navy);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.input, .select, .textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  background: white;
+}
+
+.pinInput {
+  letter-spacing: 12px;
+  font-size: 24px;
+  text-align: center;
+  font-weight: 800;
+  padding: 10px;
+}
+
+@media (max-width: 900px) {
+  .posLayout {
+    grid-template-columns: 1fr;
+  }
+}

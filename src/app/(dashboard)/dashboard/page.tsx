@@ -33,10 +33,13 @@ import Topbar from '@/components/layout/Topbar';
 import {
   useInvoices, usePayments, useInventory,
   useProducts, useCustomers, useUsers, useLocations, useStockMovements,
-  usePerformanceTargets, usePerformanceReviews,
+  useClinicPatients, useClinicAppointments, useClinicQueue, useClinicTreatments,
   findProductById, findCustomerById, findUserById, findLocationById,
 } from '@/hooks/use-supabase-data';
+import { getRoleLabel } from '@/lib/navigation';
+import type { UserRole } from '@/lib/types';
 import styles from './dashboard.module.css';
+
 
 /* ── Currency formatter — formats Naira values for display ── */
 function fmt(n: number): string {
@@ -106,28 +109,29 @@ function StatCard({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ── AdminDashboard — CEO / Super-Admin view ───────────────────────────────
+// ── UnifiedSuperAdminDashboard — CEO / Super-Admin Bento Grid Command Center ──
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Dashboard layout for the `super_admin` (CEO) role.
+ * Bento-Tile Command Center for the `super_admin` (CEO) role.
  *
- * Sections:
- *  1. **Stats Grid** — Four KPI cards: revenue, outstanding receivables,
- *     active sales reps, and inventory value.
- *  2. **Recent Activity** — A chronological feed of the latest system
- *     events (invoices, payments, allocations, registrations, alerts).
- *  3. **Expiring Stock** — Batch-level expiry countdown with colour-coded
- *     badges (danger < 30d, warning < 60d, safe ≥ 60d).
+ * Consolidates commercial pharmaceutical distribution, veterinary hospital fleet,
+ * staff HR, payroll, and infrastructure telemetry into a single panoramic grid.
  */
-function AdminDashboard() {
-  /* ── Fetch live data from Supabase via hooks ── */
+function UnifiedSuperAdminDashboard() {
+  const router = useRouter();
+  /* ── Fetch live data across both divisions via hooks ── */
   const { invoices } = useInvoices();
   const { payments } = usePayments();
   const { inventory } = useInventory();
   const { customers } = useCustomers();
   const { products } = useProducts();
-  const { movements } = useStockMovements(10);
+  const { users } = useUsers();
+  const { locations } = useLocations();
+  const { movements } = useStockMovements(8);
+  const { patients } = useClinicPatients();
+  const { queue } = useClinicQueue();
+  const { appointments } = useClinicAppointments();
 
   const [now] = useState(() => Date.now());
   const timeAgo = (dateStr: string) => {
@@ -141,39 +145,35 @@ function AdminDashboard() {
     return `${days}d ago`;
   };
 
-  /* ── Compute KPIs from hook data ──
-     useMemo recomputes whenever the underlying data arrays change. */
+  /* ── Compute consolidated KPIs ── */
   const stats = useMemo(() => {
-    // Revenue = sum of totals from paid/partial invoices
     const totalRevenue = invoices
       .filter((i) => i.status === 'paid' || i.status === 'partial')
       .reduce((sum, i) => sum + i.total, 0);
 
-    // Receivables = sum of totals from sent/partial/overdue invoices
     const receivables = invoices
       .filter((i) => i.status === 'sent' || i.status === 'partial' || i.status === 'overdue')
       .reduce((sum, i) => sum + i.total, 0);
 
-    // Inventory value = sum(qty * product_price) for all stock
     const inventoryValue = inventory.reduce((sum, item) => {
       const product = findProductById(products, item.product_id);
       return sum + (product ? product.unit_price * item.quantity : 0);
     }, 0);
 
-    // Pending payments count
     const pendingPayments = payments.filter((p) => p.status === 'pending').length;
+    const clinicCount = locations.filter((l) => l.type === 'clinic').length || (locations.length > 0 ? locations.length : 1);
+    const activeQueueCount = queue.filter((q) => q.status === 'waiting' || q.status === 'in_consultation').length;
 
-    // Expiring soon — items within 90 days, sorted by days remaining
-    const now = new Date();
+    const nowDate = new Date();
     const expiringItems = inventory
       .filter((item) => {
         const expiry = new Date(item.expiry_date);
-        const days = Math.ceil((expiry.getTime() - now.getTime()) / 86400000);
+        const days = Math.ceil((expiry.getTime() - nowDate.getTime()) / 86400000);
         return days > 0 && days <= 90;
       })
       .map((item) => {
         const product = findProductById(products, item.product_id);
-        const days = Math.ceil((new Date(item.expiry_date).getTime() - now.getTime()) / 86400000);
+        const days = Math.ceil((new Date(item.expiry_date).getTime() - nowDate.getTime()) / 86400000);
         return {
           name: product?.name || 'Unknown',
           batch: item.batch_number,
@@ -183,63 +183,147 @@ function AdminDashboard() {
       })
       .sort((a, b) => a.days - b.days);
 
-    return { totalRevenue, receivables, inventoryValue, pendingPayments, expiringItems, customers: customers.length };
-  }, [invoices, payments, inventory, customers, products]);
+    return {
+      totalRevenue,
+      receivables,
+      inventoryValue,
+      pendingPayments,
+      expiringItems,
+      customers: customers.length,
+      clinicCount,
+      patientCount: patients.length,
+      activeQueueCount,
+      staffCount: users.length,
+    };
+  }, [invoices, payments, inventory, customers, products, locations, queue, patients, users]);
 
   return (
     <>
-      {/* ── KPI Stats Row — values computed from real data ── */}
-      <div className={styles.statsGrid}>
+      {/* ── Bento Command Hero: Realtime Infrastructure & Fleet Telemetry ── */}
+      <div className={styles.bentoHero}>
+        <div className={styles.bentoHeroHeader}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+              <span className={styles.bentoPill} style={{ background: '#093961', color: '#fff', border: 'none' }}>
+                SUPER ADMIN COMMAND CENTER
+              </span>
+              <span className={styles.bentoPill} style={{ background: 'rgba(34, 197, 94, 0.12)', color: '#15803d', border: '1px solid rgba(34, 197, 94, 0.25)' }}>
+                ● Production Fleet Live
+              </span>
+            </div>
+            <h2 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: 'var(--color-navy)', letterSpacing: '-0.02em' }}>
+              Unified Enterprise Telemetry & Division Fleet
+            </h2>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+              Consolidated command grid spanning commercial pharmaceutical distribution, clinical hospital network, and multi-schema database architecture.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <span className={styles.bentoPill}>
+              ⚡ Pooler Port 5432 (IPv4)
+            </span>
+            <span className={styles.bentoPill}>
+              🗄️ Schemas: public · pet_clinic
+            </span>
+            <span className={styles.bentoPill}>
+              🛡️ All 13 Roles Active
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Bento Grid: 6 Master KPIs ── */}
+      <div className={styles.statsGridSix}>
         <StatCard
-          label="Total Revenue"
+          label="Pharma Revenue"
           value={fmt(stats.totalRevenue)}
           icon="💰"
           trend="up"
-          trendLabel="From paid invoices"
+          trendLabel="Paid invoices"
           color="var(--color-success-light)"
         />
         <StatCard
-          label="Outstanding Receivables"
+          label="Receivables"
           value={fmt(stats.receivables)}
           icon="📊"
           color="var(--color-warning-light)"
         />
         <StatCard
-          label="Active Customers"
-          value={String(stats.customers)}
-          icon="👥"
-          color="var(--color-info-light)"
-        />
-        <StatCard
-          label="Inventory Value"
+          label="Global Inventory"
           value={fmt(stats.inventoryValue)}
           icon="📦"
           trend="up"
-          trendLabel="Across all locations"
+          trendLabel="Central + clinics"
           color="var(--color-gold-tint)"
+        />
+        <StatCard
+          label="Clinic Fleet"
+          value={`${stats.clinicCount} Facilities`}
+          icon="🐾"
+          color="var(--color-info-light)"
+        />
+        <StatCard
+          label="Clinical Patients"
+          value={`${stats.patientCount} Records`}
+          icon="🩺"
+          trend="up"
+          trendLabel={`${stats.activeQueueCount} in queue`}
+          color="rgba(168, 85, 247, 0.15)"
+        />
+        <StatCard
+          label="Enterprise Staff"
+          value={`${stats.staffCount} Personnel`}
+          icon="👥"
+          color="rgba(14, 165, 233, 0.15)"
         />
       </div>
 
-      {/* ── Content Cards: Activity Feed + Expiring Stock ── */}
-      <div className={styles.contentGrid}>
-        {/* Recent Activity feed — real stock movements */}
+      {/* ── Bento Grid Two: Commercial Pharma vs. Veterinary Fleet Stream ── */}
+      <div className={styles.bentoGridTwo}>
+        {/* Card 1: Commercial Pharma Stream */}
         <div className={styles.card}>
-          <h3 className={styles.cardTitle}>Recent Activity</h3>
+          <div className={styles.cardHeader}>
+            <div>
+              <h3 className={styles.cardTitle}>Commercial Pharma Stream</h3>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                Wholesale distribution, territory receipts & stock allocations
+              </p>
+            </div>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(9, 57, 97, 0.08)', color: '#093961' }}>
+              {stats.customers} Customers
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/invoices')}>
+              <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>🧾</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Invoices</span>
+            </button>
+            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/payments')}>
+              <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>💸</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Payments</span>
+            </button>
+            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/suppliers')}>
+              <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>🏭</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Suppliers</span>
+            </button>
+          </div>
+
           <div className={styles.activityList}>
             {movements.length === 0 ? (
-              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No recent activity</p>
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No recent commercial movements</p>
             ) : (
-              movements.slice(0, 5).map((m, i) => (
+              movements.slice(0, 4).map((m, i) => (
                 <div key={m.id || i} className={styles.activityItem}>
                   <span className={styles.activityIcon}>
-                    {m.movement_type === 'allocation' ? '📦' : m.movement_type === 'receipt' ? '📥' : m.movement_type === 'sale' ? '🧾' : m.movement_type === 'adjustment' ? '📋' : '📌'}
+                    {m.movement_type === 'allocation' ? '📦' : m.movement_type === 'receipt' ? '📥' : m.movement_type === 'sale' ? '🧾' : '📋'}
                   </span>
                   <div className={styles.activityContent}>
                     <span className={styles.activityText}>
-                      {m.movement_type === 'allocation' && `Allocated ${m.quantity}x ${m.product?.name || ''} to ${m.to_location?.name || 'another location'}`}
+                      {m.movement_type === 'allocation' && `Allocated ${m.quantity}x ${m.product?.name || ''} to ${m.to_location?.name || 'location'}`}
                       {m.movement_type === 'receipt' && `Received ${m.quantity}x ${m.product?.name || ''} at ${m.to_location?.name || 'warehouse'}`}
-                      {m.movement_type === 'sale' && `Sale: ${m.quantity}x ${m.product?.name || ''}`}
-                      {m.movement_type === 'adjustment' && `Adjustment: ${m.quantity > 0 ? '+' : ''}${m.quantity}x ${m.product?.name || ''} (stock take)`}
+                      {m.movement_type === 'sale' && `Sold ${m.quantity}x ${m.product?.name || ''}`}
+                      {m.movement_type === 'adjustment' && `Stock Adjustment: ${m.quantity > 0 ? '+' : ''}${m.quantity}x ${m.product?.name || ''}`}
                       {!['allocation', 'receipt', 'sale', 'adjustment'].includes(m.movement_type) && `${m.movement_type}: ${m.quantity}x ${m.product?.name || ''}`}
                     </span>
                     <span className={styles.activityTime}>{timeAgo(m.created_at)}</span>
@@ -250,9 +334,91 @@ function AdminDashboard() {
           </div>
         </div>
 
-        {/* Expiring Stock card — computed from real inventory data */}
+        {/* Card 2: Veterinary Clinic Fleet & Live Patient Flow */}
         <div className={styles.card}>
-          <h3 className={styles.cardTitle}>Expiring Stock</h3>
+          <div className={styles.cardHeader}>
+            <div>
+              <h3 className={styles.cardTitle}>Veterinary Clinic Fleet & Flow</h3>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                Live triage queue, patient consultations & appointments
+              </p>
+            </div>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(217, 119, 6, 0.12)', color: '#b45309' }}>
+              {stats.activeQueueCount} Waiting / In Care
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/clinic/queue')}>
+              <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>⏱️</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>Triage Queue</span>
+            </button>
+            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/clinic/treatments')}>
+              <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>🩺</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>Treatments</span>
+            </button>
+            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/clinic/appointments')}>
+              <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>📅</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>Schedule</span>
+            </button>
+            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/clinic/patients')}>
+              <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>🐾</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>Patients</span>
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {queue.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No patients currently waiting</p>
+            ) : (
+              queue.slice(0, 4).map((q) => (
+                <div key={q.id} className={styles.invoiceItem}>
+                  <div>
+                    <span className={styles.invoiceId}>
+                      {q.patient?.name || 'Pet'} ({q.patient?.species || 'Animal'})
+                    </span>
+                    <span className={styles.invoiceCustomer}>
+                      Owner: {q.owner?.full_name || 'Walk-in'} · {q.reason_for_visit || 'Consultation'}
+                    </span>
+                  </div>
+                  <div className={styles.invoiceRight}>
+                    <span
+                      className={`${styles.badgePill} ${
+                        q.triage_level === 'emergency'
+                          ? styles.statusOverdue
+                          : q.triage_level === 'urgent'
+                          ? styles.statusPending
+                          : styles.statusPaid
+                      }`}
+                    >
+                      {q.triage_level?.toUpperCase()}
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
+                      {q.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Bento Grid Two: Expiry Alerts vs. Executive Command Matrix ── */}
+      <div className={styles.bentoGridTwo}>
+        {/* Card 1: Expiring Stock Alerts */}
+        <div className={styles.card}>
+          <div className={styles.cardHeader}>
+            <div>
+              <h3 className={styles.cardTitle}>Pharmaceutical Expiry Watchlist</h3>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                Batch-level expiry countdown across all warehouses & branches
+              </p>
+            </div>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626' }}>
+              {stats.expiringItems.length} Monitored
+            </span>
+          </div>
           <div className={styles.expiryList}>
             {stats.expiringItems.length === 0 ? (
               <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No items expiring soon ✅</p>
@@ -271,10 +437,59 @@ function AdminDashboard() {
             )}
           </div>
         </div>
+
+        {/* Card 2: Executive Command Matrix */}
+        <div className={styles.card}>
+          <div className={styles.cardHeader}>
+            <div>
+              <h3 className={styles.cardTitle}>Executive Command Matrix</h3>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                Cross-division governance & institutional controls
+              </p>
+            </div>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: 'var(--radius-full)', background: 'rgba(14, 165, 233, 0.12)', color: '#0284c7' }}>
+              CEO / Super Admin
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-3)' }}>
+            <button className={styles.actionBtn} onClick={() => router.push('/reports')}>
+              <span className={styles.actionIcon}>📈</span>
+              <span style={{ fontWeight: 600 }}>BI Analytics & Audits</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Revenue, taxes & stock</span>
+            </button>
+            <button className={styles.actionBtn} onClick={() => router.push('/staff')}>
+              <span className={styles.actionIcon}>👥</span>
+              <span style={{ fontWeight: 600 }}>Staff & HR Workforce</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Profiles, roles & leave</span>
+            </button>
+            <button className={styles.actionBtn} onClick={() => router.push('/clinic')}>
+              <span className={styles.actionIcon}>🐾</span>
+              <span style={{ fontWeight: 600 }}>Veterinary Clinic Fleet</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Branches & hospital stats</span>
+            </button>
+            <button className={styles.actionBtn} onClick={() => router.push('/payroll')}>
+              <span className={styles.actionIcon}>💳</span>
+              <span style={{ fontWeight: 600 }}>Payroll & Salaries</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Runs, payslips & tax</span>
+            </button>
+            <button className={styles.actionBtn} onClick={() => router.push('/products')}>
+              <span className={styles.actionIcon}>💊</span>
+              <span style={{ fontWeight: 600 }}>Formulary & SKUs</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Catalog & pricing</span>
+            </button>
+            <button className={styles.actionBtn} onClick={() => router.push('/chat')}>
+              <span className={styles.actionIcon}>💬</span>
+              <span style={{ fontWeight: 600 }}>Executive Dispatch</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Live internal comms</span>
+            </button>
+          </div>
+        </div>
       </div>
     </>
   );
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── SalesRepDashboard — Field Sales Representative view ───────────────────
@@ -496,6 +711,7 @@ function SalesRepDashboard() {
  *     value, collected amounts, and outstanding dues.
  */
 function FinanceDashboard() {
+  const router = useRouter();
   /* ── Fetch live data from Supabase via hooks ── */
   const { user } = useAuth();
   const { invoices } = useInvoices();
@@ -614,6 +830,38 @@ function FinanceDashboard() {
         <StatCard label="Overdue" value={fmt(stats.overdueAmount)} icon="🚨" color="var(--color-danger-light)" />
       </div>
 
+      {/* ── Financial Operations Tiles ── */}
+      <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
+        <div className={styles.cardHeader}>
+          <h3 className={styles.cardTitle}>Financial Operations & Controls</h3>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(34, 197, 94, 0.12)', color: '#15803d' }}>
+            Treasury & Ledger
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <button className={styles.actionBtn} onClick={() => router.push('/payments')}>
+            <span className={styles.actionIcon}>💸</span>
+            <span style={{ fontWeight: 600 }}>Payments Ledger</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Verify & approve collections</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/invoices')}>
+            <span className={styles.actionIcon}>🧾</span>
+            <span style={{ fontWeight: 600 }}>Invoices & Receivables</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Due balances & aging</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/reports')}>
+            <span className={styles.actionIcon}>📊</span>
+            <span style={{ fontWeight: 600 }}>Revenue & Tax Reports</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>7.5% VAT & sales breakdowns</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/payroll')}>
+            <span className={styles.actionIcon}>💳</span>
+            <span style={{ fontWeight: 600 }}>Payroll & Disbursements</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Staff salary payouts</span>
+          </button>
+        </div>
+      </div>
+
       {/* ── Content Cards: Payment Queue + Rep Summary ── */}
       <div className={styles.contentGrid}>
         {/* Payment Verification Queue — payments awaiting finance approval */}
@@ -694,6 +942,7 @@ function FinanceDashboard() {
  *     receipts, and stock-take results.
  */
 function InventoryDashboard() {
+  const router = useRouter();
   /* ── Fetch live data from Supabase via hooks ── */
   const { inventory } = useInventory();
   const { products } = useProducts();
@@ -760,6 +1009,38 @@ function InventoryDashboard() {
         <StatCard label="Low Stock Items" value={String(stats.lowStockCount)} icon="⚠️" color="var(--color-warning-light)" />
       </div>
 
+      {/* ── Warehouse & Supply Operations Tiles ── */}
+      <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
+        <div className={styles.cardHeader}>
+          <h3 className={styles.cardTitle}>Warehouse & Supply Operations</h3>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(14, 165, 233, 0.12)', color: '#0284c7' }}>
+            Inventory Management
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <button className={styles.actionBtn} onClick={() => router.push('/inventory')}>
+            <span className={styles.actionIcon}>📦</span>
+            <span style={{ fontWeight: 600 }}>Stock Allocations</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Allocate to reps & clinics</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/products')}>
+            <span className={styles.actionIcon}>💊</span>
+            <span style={{ fontWeight: 600 }}>Product Catalog</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>SKUs, pricing & formulations</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/suppliers')}>
+            <span className={styles.actionIcon}>🏭</span>
+            <span style={{ fontWeight: 600 }}>Suppliers & Intake</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Purchase receipts & orders</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/chat')}>
+            <span className={styles.actionIcon}>💬</span>
+            <span style={{ fontWeight: 600 }}>Team Dispatch</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Coordinate field reps</span>
+          </button>
+        </div>
+      </div>
+
       {/* ── Content Cards: Stock Table + Movements ── */}
       <div className={styles.contentGrid}>
         {/* Warehouse Stock Overview — grid-style table of current stock */}
@@ -819,25 +1100,647 @@ function InventoryDashboard() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ── DashboardPage — Exported page component (role-based router) ──────────
+// ── Clinical & Enterprise Division Sections ────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Dashboard section for `clinic_admin`.
+ */
+function ClinicAdminSection() {
+  const router = useRouter();
+  const { patients } = useClinicPatients();
+  const { queue } = useClinicQueue();
+  const { appointments } = useClinicAppointments();
+  const { treatments } = useClinicTreatments();
+
+  const stats = useMemo(() => {
+    const totalPatients = patients.length;
+    const todayAppointments = appointments.length;
+    const inQueue = queue.filter((q) => q.status === 'waiting' || q.status === 'in_consultation').length;
+    const completedTreatments = treatments.length;
+    return { totalPatients, todayAppointments, inQueue, completedTreatments };
+  }, [patients, appointments, queue, treatments]);
+
+  return (
+    <>
+      <div className={styles.statsGrid}>
+        <StatCard label="Registered Patients" value={String(stats.totalPatients)} icon="🐾" color="var(--color-info-light)" />
+        <StatCard label="Today's Appointments" value={String(stats.todayAppointments)} icon="📅" color="var(--color-gold-tint)" />
+        <StatCard label="Active In Queue" value={String(stats.inQueue)} icon="⏱️" trend="up" trendLabel="Triage active" color="var(--color-warning-light)" />
+        <StatCard label="Treatments Logged" value={String(stats.completedTreatments)} icon="🩺" color="var(--color-success-light)" />
+      </div>
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
+        <div className={styles.cardHeader}>
+          <h3 className={styles.cardTitle}>Clinical Operations & Scheduling</h3>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(13, 148, 136, 0.12)', color: '#0f766e' }}>
+            Clinic Administration
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/queue')}>
+            <span className={styles.actionIcon}>⏱️</span>
+            <span style={{ fontWeight: 600 }}>Triage Queue</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Patient intake & wait times</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/appointments')}>
+            <span className={styles.actionIcon}>📅</span>
+            <span style={{ fontWeight: 600 }}>Appointments</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Schedule consultations</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/patients')}>
+            <span className={styles.actionIcon}>🐾</span>
+            <span style={{ fontWeight: 600 }}>Patient Directory</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Medical records & owners</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/staff')}>
+            <span className={styles.actionIcon}>👥</span>
+            <span style={{ fontWeight: 600 }}>Clinic Staff</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Vets, techs & rosters</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.contentGrid}>
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Live Triage Queue</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {queue.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No patients in triage queue</p>
+            ) : (
+              queue.slice(0, 5).map((q) => (
+                <div key={q.id} className={styles.invoiceItem}>
+                  <div>
+                    <span className={styles.invoiceId}>{q.patient?.name || 'Pet'} ({q.patient?.species || 'Animal'})</span>
+                    <span className={styles.invoiceCustomer}>Owner: {q.owner?.full_name || 'Walk-in'} · {q.reason_for_visit}</span>
+                  </div>
+                  <div className={styles.invoiceRight}>
+                    <span className={`${styles.badgePill} ${q.triage_level === 'emergency' ? styles.statusOverdue : q.triage_level === 'urgent' ? styles.statusPending : styles.statusPaid}`}>
+                      {q.triage_level?.toUpperCase()}
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
+                      {q.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Upcoming Appointments</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {appointments.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No upcoming appointments scheduled</p>
+            ) : (
+              appointments.slice(0, 5).map((a) => (
+                <div key={a.id} className={styles.invoiceItem}>
+                  <div>
+                    <span className={styles.invoiceId}>{a.patient?.name || 'Patient'} ({a.patient?.species})</span>
+                    <span className={styles.invoiceCustomer}>{a.service_type || 'Consultation'} · {a.date} {a.start_time}</span>
+                  </div>
+                  <div className={styles.invoiceRight}>
+                    <span className={`${styles.badgePill} ${a.status === 'confirmed' ? styles.statusPaid : a.status === 'cancelled' ? styles.statusOverdue : styles.statusPending}`}>
+                      {a.status?.toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Dashboard section for `vet` (Veterinarian Surgeon).
+ */
+function VeterinarianSection() {
+  const router = useRouter();
+  const { queue } = useClinicQueue();
+  const { treatments } = useClinicTreatments();
+
+  const stats = useMemo(() => {
+    const waitingCount = queue.filter((q) => q.status === 'waiting').length;
+    const criticalCount = queue.filter((q) => q.triage_level === 'emergency' || q.triage_level === 'urgent').length;
+    const inProgressCount = queue.filter((q) => q.status === 'in_consultation').length;
+    const treatmentCount = treatments.length;
+    return { waitingCount, criticalCount, inProgressCount, treatmentCount };
+  }, [queue, treatments]);
+
+  return (
+    <>
+      <div className={styles.statsGrid}>
+        <StatCard label="Awaiting Consultation" value={String(stats.waitingCount)} icon="🩺" color="var(--color-info-light)" />
+        <StatCard label="Emergency / Urgent" value={String(stats.criticalCount)} icon="🚨" color={stats.criticalCount > 0 ? "var(--color-danger-light)" : "var(--color-success-light)"} />
+        <StatCard label="In Consultation" value={String(stats.inProgressCount)} icon="⏳" color="var(--color-warning-light)" />
+        <StatCard label="Completed Treatments" value={String(stats.treatmentCount)} icon="📋" color="var(--color-gold-tint)" />
+      </div>
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
+        <div className={styles.cardHeader}>
+          <h3 className={styles.cardTitle}>Clinical Diagnosis & Veterinary Care</h3>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(99, 102, 241, 0.12)', color: '#4f46e5' }}>
+            Veterinary Surgeon
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/queue')}>
+            <span className={styles.actionIcon}>🩺</span>
+            <span style={{ fontWeight: 600 }}>Start Consultation</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Call next waiting patient</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/treatments')}>
+            <span className={styles.actionIcon}>📝</span>
+            <span style={{ fontWeight: 600 }}>SOAP Clinical Notes</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>EHR records & diagnosis</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/patients')}>
+            <span className={styles.actionIcon}>🐾</span>
+            <span style={{ fontWeight: 600 }}>Patient Medical History</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Vaccinations & surgeries</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/inventory')}>
+            <span className={styles.actionIcon}>💊</span>
+            <span style={{ fontWeight: 600 }}>Pharmacy & Rx Formulations</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Drug stock & dosages</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.contentGrid}>
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Priority Patient Queue</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {queue.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No patients awaiting consultation ✅</p>
+            ) : (
+              queue.slice(0, 5).map((q) => (
+                <div key={q.id} className={styles.invoiceItem}>
+                  <div>
+                    <span className={styles.invoiceId}>{q.patient?.name || 'Pet'} ({q.patient?.species || 'Animal'})</span>
+                    <span className={styles.invoiceCustomer}>Reason: {q.reason_for_visit} · Weight: {q.patient?.weight_kg ? `${q.patient.weight_kg}kg` : 'N/A'}</span>
+                  </div>
+                  <div className={styles.invoiceRight}>
+                    <span className={`${styles.badgePill} ${q.triage_level === 'emergency' ? styles.statusOverdue : q.triage_level === 'urgent' ? styles.statusPending : styles.statusPaid}`}>
+                      {q.triage_level?.toUpperCase()}
+                    </span>
+                    <button
+                      onClick={() => router.push('/clinic/treatments')}
+                      style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-ocean)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}
+                    >
+                      Examine →
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Recent Clinical Cases & Diagnoses</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {treatments.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No recent consultation records</p>
+            ) : (
+              treatments.slice(0, 5).map((t) => (
+                <div key={t.id} className={styles.invoiceItem}>
+                  <div>
+                    <span className={styles.invoiceId}>{t.patient?.name || 'Patient'} · {t.diagnosis || 'Clinical Assessment'}</span>
+                    <span className={styles.invoiceCustomer}>Vet: {t.vet?.full_name || 'Dr. On Duty'} · {t.date}</span>
+                  </div>
+                  <div className={styles.invoiceRight}>
+                    <span className={`${styles.badgePill} ${styles.statusPaid}`}>
+                      {t.status?.toUpperCase() || 'COMPLETED'}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Dashboard section for `vet_tech` and `vet_assistant`.
+ */
+function VetTechSection() {
+  const router = useRouter();
+  const { queue } = useClinicQueue();
+  const { treatments } = useClinicTreatments();
+  const { inventory } = useInventory();
+
+  const stats = useMemo(() => {
+    const waitingVitals = queue.filter((q) => q.status === 'waiting').length;
+    const inCare = queue.filter((q) => q.status === 'in_consultation').length;
+    const stockItems = inventory.length;
+    const totalTreatments = treatments.length;
+    return { waitingVitals, inCare, stockItems, totalTreatments };
+  }, [queue, inventory, treatments]);
+
+  return (
+    <>
+      <div className={styles.statsGrid}>
+        <StatCard label="Awaiting Triage / Vitals" value={String(stats.waitingVitals)} icon="🌡️" color="var(--color-warning-light)" />
+        <StatCard label="In-Care Patients" value={String(stats.inCare)} icon="💉" color="var(--color-info-light)" />
+        <StatCard label="Medication SKUs" value={String(stats.stockItems)} icon="💊" color="var(--color-gold-tint)" />
+        <StatCard label="Cases Handled" value={String(stats.totalTreatments)} icon="📋" color="var(--color-success-light)" />
+      </div>
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
+        <div className={styles.cardHeader}>
+          <h3 className={styles.cardTitle}>Nursing, Triage & Preparation</h3>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(168, 85, 247, 0.12)', color: '#7e22ce' }}>
+            Veterinary Nursing & Prep
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/queue')}>
+            <span className={styles.actionIcon}>🌡️</span>
+            <span style={{ fontWeight: 600 }}>Triage & Record Vitals</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Weight, temp & symptoms</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/inventory')}>
+            <span className={styles.actionIcon}>💉</span>
+            <span style={{ fontWeight: 600 }}>Medication Stock</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Vaccines, antibiotics & drips</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/patients')}>
+            <span className={styles.actionIcon}>🐾</span>
+            <span style={{ fontWeight: 600 }}>Patient Directory</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Microchips & patient profiles</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/chat')}>
+            <span className={styles.actionIcon}>💬</span>
+            <span style={{ fontWeight: 600 }}>Clinical Chat</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Alert veterinarians</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.contentGrid}>
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Patients Awaiting Vitals / Prep</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {queue.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No patients awaiting prep</p>
+            ) : (
+              queue.slice(0, 5).map((q) => (
+                <div key={q.id} className={styles.invoiceItem}>
+                  <div>
+                    <span className={styles.invoiceId}>{q.patient?.name || 'Pet'} ({q.patient?.species})</span>
+                    <span className={styles.invoiceCustomer}>Owner: {q.owner?.full_name || 'Walk-in'} · {q.reason_for_visit}</span>
+                  </div>
+                  <div className={styles.invoiceRight}>
+                    <span className={`${styles.badgePill} ${q.triage_level === 'emergency' ? styles.statusOverdue : q.triage_level === 'urgent' ? styles.statusPending : styles.statusPaid}`}>
+                      {q.triage_level?.toUpperCase()}
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>{q.status}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Clinical Treatments Log</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {treatments.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No treatments recorded</p>
+            ) : (
+              treatments.slice(0, 5).map((t) => (
+                <div key={t.id} className={styles.invoiceItem}>
+                  <div>
+                    <span className={styles.invoiceId}>{t.patient?.name || 'Patient'}</span>
+                    <span className={styles.invoiceCustomer}>Dx: {t.diagnosis || 'Observation'} · {t.date}</span>
+                  </div>
+                  <div className={styles.invoiceRight}>
+                    <span className={`${styles.badgePill} ${styles.statusPaid}`}>{t.status || 'Done'}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Dashboard section for `receptionist` (Front Desk Receptionist).
+ */
+function ReceptionistSection() {
+  const router = useRouter();
+  const { queue } = useClinicQueue();
+  const { appointments } = useClinicAppointments();
+  const { patients } = useClinicPatients();
+  const { invoices } = useInvoices();
+
+  const stats = useMemo(() => {
+    const inLounge = queue.filter((q) => q.status === 'waiting').length;
+    const todayAppointments = appointments.length;
+    const registeredPets = patients.length;
+    const totalInvoices = invoices.length;
+    return { inLounge, todayAppointments, registeredPets, totalInvoices };
+  }, [queue, appointments, patients, invoices]);
+
+  return (
+    <>
+      <div className={styles.statsGrid}>
+        <StatCard label="In Waiting Lounge" value={String(stats.inLounge)} icon="🛋️" color="var(--color-warning-light)" />
+        <StatCard label="Today's Appointments" value={String(stats.todayAppointments)} icon="📅" color="var(--color-info-light)" />
+        <StatCard label="Registered Patients" value={String(stats.registeredPets)} icon="🐾" color="var(--color-gold-tint)" />
+        <StatCard label="Invoices & Billing" value={String(stats.totalInvoices)} icon="🧾" color="var(--color-success-light)" />
+      </div>
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
+        <div className={styles.cardHeader}>
+          <h3 className={styles.cardTitle}>Front Desk & Patient Services</h3>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(249, 115, 22, 0.12)', color: '#ea580c' }}>
+            Front Desk Reception
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/queue')}>
+            <span className={styles.actionIcon}>📋</span>
+            <span style={{ fontWeight: 600 }}>Check-In Patient</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Add walk-in or arrival</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/appointments')}>
+            <span className={styles.actionIcon}>📅</span>
+            <span style={{ fontWeight: 600 }}>Book Appointment</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Schedule clinic visits</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/patients')}>
+            <span className={styles.actionIcon}>🐾</span>
+            <span style={{ fontWeight: 600 }}>Register Pet & Owner</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Create patient file</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/invoices')}>
+            <span className={styles.actionIcon}>🧾</span>
+            <span style={{ fontWeight: 600 }}>Point of Sale / Billing</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Issue receipt & invoice</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.contentGrid}>
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Active Lounge Queue</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {queue.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>Lounge is clear</p>
+            ) : (
+              queue.slice(0, 5).map((q) => (
+                <div key={q.id} className={styles.invoiceItem}>
+                  <div>
+                    <span className={styles.invoiceId}>{q.patient?.name || 'Pet'} ({q.patient?.species})</span>
+                    <span className={styles.invoiceCustomer}>Owner: {q.owner?.full_name || 'Walk-in'} · {q.reason_for_visit}</span>
+                  </div>
+                  <div className={styles.invoiceRight}>
+                    <span className={`${styles.badgePill} ${q.triage_level === 'emergency' ? styles.statusOverdue : q.triage_level === 'urgent' ? styles.statusPending : styles.statusPaid}`}>
+                      {q.triage_level?.toUpperCase()}
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
+                      {q.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Appointments Schedule</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {appointments.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No appointments booked</p>
+            ) : (
+              appointments.slice(0, 5).map((a) => (
+                <div key={a.id} className={styles.invoiceItem}>
+                  <div>
+                    <span className={styles.invoiceId}>{a.patient?.name || 'Patient'} ({a.patient?.species})</span>
+                    <span className={styles.invoiceCustomer}>{a.service_type || 'General Checkup'} · {a.date} {a.start_time}</span>
+                  </div>
+                  <div className={styles.invoiceRight}>
+                    <span className={`${styles.badgePill} ${a.status === 'confirmed' ? styles.statusPaid : a.status === 'cancelled' ? styles.statusOverdue : styles.statusPending}`}>
+                      {a.status?.toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Dashboard section for `lab_scientist`.
+ */
+function LabScientistSection() {
+  const router = useRouter();
+  const { patients } = useClinicPatients();
+  const { treatments } = useClinicTreatments();
+  const { inventory } = useInventory();
+  const { queue } = useClinicQueue();
+
+  return (
+    <>
+      <div className={styles.statsGrid}>
+        <StatCard label="Patient Records" value={String(patients.length)} icon="🐾" color="var(--color-info-light)" />
+        <StatCard label="Clinical Diagnostic Cases" value={String(treatments.length)} icon="🔬" color="rgba(168, 85, 247, 0.15)" />
+        <StatCard label="Laboratory Reagents & SKUs" value={String(inventory.length)} icon="🧪" color="var(--color-gold-tint)" />
+        <StatCard label="In-Clinic Patients" value={String(queue.length)} icon="🏥" color="var(--color-success-light)" />
+      </div>
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
+        <div className={styles.cardHeader}>
+          <h3 className={styles.cardTitle}>Diagnostic Laboratory & Pathology</h3>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(217, 70, 239, 0.12)', color: '#a21caf' }}>
+            Laboratory Scientist
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/patients')}>
+            <span className={styles.actionIcon}>🐾</span>
+            <span style={{ fontWeight: 600 }}>Patient Health Records</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Look up histories & species</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic/treatments')}>
+            <span className={styles.actionIcon}>🔬</span>
+            <span style={{ fontWeight: 600 }}>Diagnostic Treatments</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Review clinical notes & tests</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/inventory')}>
+            <span className={styles.actionIcon}>🧪</span>
+            <span style={{ fontWeight: 600 }}>Reagents & Lab Supplies</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Test kits, slides & reagents</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/chat')}>
+            <span className={styles.actionIcon}>💬</span>
+            <span style={{ fontWeight: 600 }}>Clinical Chat</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Report results to veterinarians</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.contentGrid}>
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Recent Clinical Diagnoses & Lab Cases</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {treatments.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No diagnostic cases logged</p>
+            ) : (
+              treatments.slice(0, 5).map((t) => (
+                <div key={t.id} className={styles.invoiceItem}>
+                  <div>
+                    <span className={styles.invoiceId}>{t.patient?.name || 'Patient'} · {t.diagnosis || 'Lab Investigation'}</span>
+                    <span className={styles.invoiceCustomer}>Vet: {t.vet?.full_name || 'Veterinarian'} · {t.date}</span>
+                  </div>
+                  <div className={styles.invoiceRight}>
+                    <span className={`${styles.badgePill} ${styles.statusPaid}`}>{t.status || 'Active'}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Diagnostic Reagents & Stock</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {inventory.slice(0, 5).map((item) => (
+              <div key={item.id} className={styles.invoiceItem}>
+                <div>
+                  <span className={styles.invoiceId}>Batch: {item.batch_number}</span>
+                  <span className={styles.invoiceCustomer}>Expires: {item.expiry_date}</span>
+                </div>
+                <div className={styles.invoiceRight}>
+                  <span className={styles.invoiceAmount}>{item.quantity} units</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Dashboard section for `support_staff`.
+ */
+function SupportStaffSection() {
+  const router = useRouter();
+  const { locations } = useLocations();
+  const { inventory } = useInventory();
+  const { users } = useUsers();
+
+  return (
+    <>
+      <div className={styles.statsGrid}>
+        <StatCard label="Active Clinic Facilities" value={String(locations.filter(l => l.type === 'clinic').length || 1)} icon="🏥" color="var(--color-info-light)" />
+        <StatCard label="Total Locations" value={String(locations.length)} icon="📍" color="var(--color-gold-tint)" />
+        <StatCard label="Facility Supplies" value={String(inventory.length)} icon="📦" color="var(--color-warning-light)" />
+        <StatCard label="On-Duty Personnel" value={String(users.length)} icon="👥" color="var(--color-success-light)" />
+      </div>
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
+        <div className={styles.cardHeader}>
+          <h3 className={styles.cardTitle}>Support, Facilities & Operational Supplies</h3>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(100, 116, 139, 0.12)', color: '#475569' }}>
+            Support Staff
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <button className={styles.actionBtn} onClick={() => router.push('/clinic')}>
+            <span className={styles.actionIcon}>🏥</span>
+            <span style={{ fontWeight: 600 }}>Clinic Facilities</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Hospital branches & rooms</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/inventory')}>
+            <span className={styles.actionIcon}>📦</span>
+            <span style={{ fontWeight: 600 }}>Supplies & Logistics</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Warehouse & clinic stock</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/chat')}>
+            <span className={styles.actionIcon}>💬</span>
+            <span style={{ fontWeight: 600 }}>Team Dispatch</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Coordinate maintenance & tasks</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => router.push('/reports')}>
+            <span className={styles.actionIcon}>📈</span>
+            <span style={{ fontWeight: 600 }}>Reports</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Operational summaries</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.contentGrid}>
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Hospital Facilities & Locations</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {locations.map((loc) => (
+              <div key={loc.id} className={styles.invoiceItem}>
+                <div>
+                  <span className={styles.invoiceId}>{loc.name}</span>
+                  <span className={styles.invoiceCustomer}>{loc.address || 'Enterprise Facility'}</span>
+                </div>
+                <div className={styles.invoiceRight}>
+                  <span className={`${styles.badgePill} ${styles.statusPaid}`}>{loc.type.toUpperCase()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Operational Supplies Summary</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {inventory.slice(0, 5).map((item) => (
+              <div key={item.id} className={styles.invoiceItem}>
+                <div>
+                  <span className={styles.invoiceId}>Batch {item.batch_number}</span>
+                  <span className={styles.invoiceCustomer}>Location SKU</span>
+                </div>
+                <div className={styles.invoiceRight}>
+                  <span className={styles.invoiceAmount}>{item.quantity} units</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── DashboardPage — Exported page component (role & multi-role router) ────
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Main dashboard page component — the default route after login.
  *
- * **Role-based rendering:**
- * The component reads `user.role` from the auth context and conditionally
- * renders the matching sub-dashboard.  Each role maps to exactly one
- * dashboard component; no role ever sees another role's dashboard.
- *
- * **Greeting logic:**
- * - The `greetings` record maps each role key to a human-readable title
- *   displayed in the Topbar (e.g. "CEO Dashboard").
- * - The welcome text extracts the user's first name by splitting
- *   `user.full_name` on spaces and taking the first token.
- *
- * @returns The fully rendered dashboard page, or `null` while the auth
- *          context is still loading (user is undefined).
+ * **Role-based & Multi-role rendering:**
+ * - Single application architecture for all users.
+ * - If user has super_admin or ceo role: renders the unified Bento-Tile Command Center.
+ * - If user has multiple roles (e.g. Clinic Admin + Vet): stacks all role dashboards
+ *   simultaneously without requiring the user to manually switch views.
+ * - If user has a single role: renders their dedicated division dashboard.
  */
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -845,43 +1748,127 @@ export default function DashboardPage() {
   // Guard: render nothing until the auth context has resolved the user
   if (!user) return null;
 
+  // Multi-role resolution: check user.roles array first, fallback to user.role
+  const userRoles = (user.roles && user.roles.length > 0 ? user.roles : [user.role]) as UserRole[];
+  const isSuperAdmin = userRoles.includes('super_admin') || userRoles.includes('ceo');
+  const isMultiRole = !isSuperAdmin && userRoles.length > 1;
+
   /**
-   * Maps each role slug to a friendly Topbar title.
-   * Falls back to the generic "Dashboard" if the role is unrecognised.
+   * Generates a context-aware Topbar title.
    */
-  const greetings: Record<string, string> = {
-    super_admin: 'Admin Dashboard',
-    ceo: 'CEO Dashboard',
-    sales_rep: 'Sales Dashboard',
-    finance_manager: 'Finance Dashboard',
-    inventory_manager: 'Inventory Dashboard',
+  const title = isSuperAdmin
+    ? 'CEO & Super Admin Command Center'
+    : isMultiRole
+    ? `Unified Workspace (${userRoles.map((r) => getRoleLabel(r)).join(' + ')})`
+    : `${getRoleLabel(user.role)} Dashboard`;
+
+  // Helper to render section for a specific role
+  const renderRoleDashboard = (role: UserRole) => {
+    switch (role) {
+      case 'super_admin':
+      case 'ceo':
+        return <UnifiedSuperAdminDashboard />;
+      case 'sales_rep':
+        return <SalesRepDashboard />;
+      case 'finance_manager':
+        return <FinanceDashboard />;
+      case 'inventory_manager':
+      case 'pharmacist':
+        return <InventoryDashboard />;
+      case 'clinic_admin':
+        return <ClinicAdminSection />;
+      case 'vet':
+        return <VeterinarianSection />;
+      case 'vet_tech':
+      case 'vet_assistant':
+        return <VetTechSection />;
+      case 'receptionist':
+        return <ReceptionistSection />;
+      case 'lab_scientist':
+        return <LabScientistSection />;
+      case 'support_staff':
+        return <SupportStaffSection />;
+      default:
+        return <SalesRepDashboard />;
+    }
   };
 
   return (
     <>
-      <Topbar title={greetings[user.role] || 'Dashboard'} />
+      <Topbar title={title} />
       <div className={styles.page}>
         {/* ── Personalised greeting ── */}
         <div className={styles.greeting}>
           <h2 className={styles.greetingText}>
-            {/* Extract first name only — e.g. "Chidi Okafor" → "Chidi" */}
             Welcome back, {user.full_name.split(' ')[0]} 👋
           </h2>
           <p className={styles.greetingSub}>
-            Here&apos;s what&apos;s happening at Albion today.
+            {isSuperAdmin
+              ? 'All commercial pharmaceutical and clinical hospital operations are live in your command center.'
+              : isMultiRole
+              ? `You are signed in with multiple roles: ${userRoles.map((r) => getRoleLabel(r)).join(', ')}. All capabilities are unified below without switching.`
+              : "Here's what's happening at Albion today."}
           </p>
         </div>
 
-        {/*
-         * ── Role-based dashboard switch ──
-         * Only the dashboard matching the user's role is rendered.
-         * Each condition is mutually exclusive by design.
-         */}
-        {(user.role === 'super_admin' || user.role === 'ceo') && <AdminDashboard />}
-        {user.role === 'sales_rep' && <SalesRepDashboard />}
-        {user.role === 'finance_manager' && <FinanceDashboard />}
-        {user.role === 'inventory_manager' && <InventoryDashboard />}
+        {/* ── Super Admin / CEO Dashboard (Bento Grid) ── */}
+        {isSuperAdmin && <UnifiedSuperAdminDashboard />}
+
+        {/* ── Multi-Role Simultaneous View ── */}
+        {isMultiRole && (
+          <>
+            <div className={styles.bentoHero} style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-4) var(--space-6)' }}>
+              <div className={styles.bentoHeroHeader}>
+                <div>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.75px', color: '#093961' }}>
+                    MULTI-ROLE ACTIVE WORKSPACE
+                  </span>
+                  <h3 style={{ margin: '4px 0 0 0', fontSize: '1.15rem', color: 'var(--color-navy)', fontWeight: 700 }}>
+                    Unified Operations for {userRoles.map((r) => getRoleLabel(r)).join(' & ')}
+                  </h3>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                    All features, metrics, and workflows from your assigned roles are stacked concurrently. No manual view toggling required.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {userRoles.map((r) => (
+                    <span key={r} className={styles.bentoPill} style={{ background: 'rgba(9, 57, 97, 0.08)', color: '#093961' }}>
+                      👤 {getRoleLabel(r)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {userRoles.map((role) => (
+              <div key={role} style={{ marginBottom: 'var(--space-8)' }}>
+                <div className={styles.multiRoleHeader}>
+                  <h3 className={styles.multiRoleTitle}>
+                    {role === 'clinic_admin' && '🏥 Clinic Administration & Fleet Operations'}
+                    {role === 'vet' && '🩺 Clinical Consultations & Veterinary Surgery'}
+                    {(role === 'vet_tech' || role === 'vet_assistant') && '🐾 Veterinary Nursing & Triage Support'}
+                    {role === 'receptionist' && '📋 Front Desk, Check-In & Patient Reception'}
+                    {role === 'lab_scientist' && '🔬 Laboratory Diagnostics & Pathology'}
+                    {role === 'sales_rep' && '💼 Field Sales & Territory Portfolio'}
+                    {role === 'finance_manager' && '💳 Treasury, Payments & Financial Ledger'}
+                    {role === 'inventory_manager' && '📦 Central Warehouse & Supply Logistics'}
+                    {role === 'pharmacist' && '💊 Clinical Pharmacy & Formulations'}
+                    {role === 'support_staff' && '🧹 Support, Facilities & Operations'}
+                  </h3>
+                  <span className={styles.badgePill} style={{ background: 'rgba(9, 57, 97, 0.1)', color: '#093961' }}>
+                    {getRoleLabel(role)}
+                  </span>
+                </div>
+                {renderRoleDashboard(role)}
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* ── Single Role View ── */}
+        {!isSuperAdmin && !isMultiRole && renderRoleDashboard(user.role)}
       </div>
     </>
   );
 }
+

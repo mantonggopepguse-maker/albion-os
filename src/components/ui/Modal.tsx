@@ -23,8 +23,8 @@ import styles from './Modal.module.css';
 
 /* ─── Props Interface ─── */
 interface ModalProps {
-  /** Controls whether the modal is visible. */
-  isOpen: boolean;
+  /** Controls whether the modal is visible. Defaults to true. */
+  isOpen?: boolean;
   /** Callback fired when the modal should close (backdrop click, Escape, X button). */
   onClose: () => void;
   /** Title displayed in the modal header. */
@@ -47,7 +47,14 @@ interface ModalProps {
  *   - Escape key closes the modal
  *   - Body scroll is locked while the modal is open
  */
-export default function Modal({ isOpen, onClose, title, subtitle, children, maxWidth }: ModalProps) {
+export default function Modal({
+  isOpen = true,
+  onClose,
+  title,
+  subtitle,
+  children,
+  maxWidth = '560px',
+}: ModalProps) {
   /* ── Close on Escape key ── */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {

@@ -33,8 +33,10 @@ import Toast from '@/components/ui/Toast';
 import {
   useCustomers,
   useLocations,
+  useInvoices,
   type AddCustomerInput,
 } from '@/hooks/use-supabase-data';
+import type { Customer } from '@/lib/types';
 import { updateCustomer } from '@/lib/data-service';
 import { useAuth } from '@/lib/auth-context';
 import styles from './customers.module.css';
@@ -140,6 +142,7 @@ export default function CustomersPage() {
   const { customers, loading: customersLoading, addCustomer, refetch } = useCustomers(isCeo);
   /** Live location data from Supabase — used in the "Add Customer" modal dropdown. */
   const { locations, loading: locationsLoading } = useLocations();
+  const { invoices } = useInvoices();
 
   /** Combined loading state — true while either dataset is still fetching. */
   const loading = customersLoading || locationsLoading;
@@ -163,6 +166,22 @@ export default function CustomersPage() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: '', business_name: '', phone: '', email: '', address: '', state: '', credit_limit: 0 });
+
+  // ── Customer Ledger Modal state ──
+  const [ledgerCustomer, setLedgerCustomer] = useState<Customer | null>(null);
+
+  const customerInvoices = useMemo(() => {
+    if (!ledgerCustomer) return [];
+    return invoices.filter((inv) => inv.customer_id === ledgerCustomer.id);
+  }, [ledgerCustomer, invoices]);
+
+  const customerMetrics = useMemo(() => {
+    if (!ledgerCustomer) return { totalInvoiced: 0, totalPaid: 0, balance: 0 };
+    const totalInvoiced = customerInvoices.reduce((sum, inv) => sum + inv.total, 0);
+    const totalPaid = customerInvoices.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0);
+    const balance = totalInvoiced - totalPaid;
+    return { totalInvoiced, totalPaid, balance };
+  }, [ledgerCustomer, customerInvoices]);
 
   const displayCustomers = useMemo(() => {
     return customers.filter(c => {
@@ -454,23 +473,34 @@ export default function CustomersPage() {
                         {formatCurrency(c.outstanding_balance)}
                       </td>
                       <td>
-                        <button
-                          onClick={() => {
-                            setEditCustomerId(c.id);
-                            setEditForm({
-                              name: c.name,
-                              business_name: c.business_name,
-                              phone: c.phone,
-                              email: c.email || '',
-                              address: c.address,
-                              state: c.state,
-                              credit_limit: c.credit_limit,
-                            });
-                          }}
-                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 600, fontFamily: 'inherit', color: 'var(--color-ocean)', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}
-                        >
-                          Edit
-                        </button>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            type="button"
+                            onClick={() => setLedgerCustomer(c)}
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', fontWeight: 600, fontFamily: 'inherit', color: 'var(--color-navy)', background: 'rgba(15, 23, 42, 0.05)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}
+                            title="View statement & invoice history"
+                          >
+                            📜 Ledger
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditCustomerId(c.id);
+                              setEditForm({
+                                name: c.name,
+                                business_name: c.business_name,
+                                phone: c.phone,
+                                email: c.email || '',
+                                address: c.address,
+                                state: c.state,
+                                credit_limit: c.credit_limit,
+                              });
+                            }}
+                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 600, fontFamily: 'inherit', color: 'var(--color-ocean)', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}
+                          >
+                            Edit
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -737,6 +767,128 @@ export default function CustomersPage() {
           </div>
         </form>
       </Modal>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          ── Customer Account Statement & Ledger Modal ──
+          ═══════════════════════════════════════════════════════════════════ */}
+      {ledgerCustomer && (
+        <Modal
+          isOpen={!!ledgerCustomer}
+          onClose={() => setLedgerCustomer(null)}
+          title={`Customer Ledger: ${ledgerCustomer.business_name || ledgerCustomer.name}`}
+          subtitle={`Financial account statement and invoice audit for ${ledgerCustomer.name}`}
+          maxWidth="850px"
+        >
+          <div>
+            {/* Top Summary Metrics */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Lifetime Invoiced</div>
+                <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--color-navy)', marginTop: '4px' }}>
+                  ₦{formatCurrency(customerMetrics.totalInvoiced)}
+                </div>
+              </div>
+              <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: '#166534', textTransform: 'uppercase' }}>Total Collected</div>
+                <div style={{ fontSize: '18px', fontWeight: 700, color: '#15803d', marginTop: '4px' }}>
+                  ₦{formatCurrency(customerMetrics.totalPaid)}
+                </div>
+              </div>
+              <div style={{ background: customerMetrics.balance > 0 ? '#fef2f2' : '#f8fafc', padding: '12px', borderRadius: '8px', border: customerMetrics.balance > 0 ? '1px solid #fecaca' : '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: customerMetrics.balance > 0 ? '#991b1b' : '#64748b', textTransform: 'uppercase' }}>Outstanding Due</div>
+                <div style={{ fontSize: '18px', fontWeight: 700, color: customerMetrics.balance > 0 ? '#dc2626' : '#166534', marginTop: '4px' }}>
+                  ₦{formatCurrency(customerMetrics.balance)}
+                </div>
+              </div>
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Credit Ceiling</div>
+                <div style={{ fontSize: '18px', fontWeight: 700, color: '#0369a1', marginTop: '4px' }}>
+                  ₦{formatCurrency(ledgerCustomer.credit_limit)}
+                </div>
+              </div>
+            </div>
+
+            {/* Invoices History Table */}
+            <div style={{ overflowX: 'auto', maxHeight: '360px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 1 }}>
+                  <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                    <th style={{ padding: '10px 12px' }}>Invoice #</th>
+                    <th style={{ padding: '10px 12px' }}>Date</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Total (₦)</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Paid (₦)</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Due (₦)</th>
+                    <th style={{ padding: '10px 12px' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customerInvoices.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>
+                        No commercial invoices recorded for this customer yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    customerInvoices.map((inv) => {
+                      const due = inv.total - (inv.paid_amount || 0);
+                      return (
+                        <tr key={inv.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 12px', fontWeight: 600 }}>{inv.invoice_number}</td>
+                          <td style={{ padding: '10px 12px', color: '#64748b' }}>{new Date(inv.created_at).toLocaleDateString()}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>₦{formatCurrency(inv.total)}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', color: '#166534' }}>₦{formatCurrency(inv.paid_amount || 0)}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: due > 0 ? '#dc2626' : '#166534' }}>
+                            ₦{formatCurrency(due)}
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                textTransform: 'uppercase',
+                                background:
+                                  inv.status === 'paid' ? '#dcfce7' : inv.status === 'overdue' ? '#fee2e2' : '#fef3c7',
+                                color:
+                                  inv.status === 'paid' ? '#166534' : inv.status === 'overdue' ? '#991b1b' : '#92400e',
+                              }}
+                            >
+                              {inv.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>
+                Phone: <strong>{ledgerCustomer.phone}</strong> | Address: <strong>{ledgerCustomer.address}, {ledgerCustomer.state}</strong>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  style={{ padding: '6px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
+                >
+                  🖨️ Print Statement
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLedgerCustomer(null)}
+                  style={{ padding: '6px 14px', border: 'none', borderRadius: '6px', background: 'var(--color-navy)', color: 'white', fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
+                >
+                  Close Ledger
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }

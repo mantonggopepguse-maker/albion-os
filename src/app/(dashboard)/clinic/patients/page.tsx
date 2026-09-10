@@ -17,6 +17,10 @@ const initialForm = {
   date_of_birth: '',
   weight_kg: '',
   color: '',
+  microchip_id: '',
+  spayed_neutered: false,
+  allergies: '',
+  medical_notes: '',
   owner_id: '',
 };
 
@@ -39,9 +43,14 @@ export default function PatientsPage() {
     }
   }, [showModal, users]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+      const { checked } = e.target as HTMLInputElement;
+      setForm((prev) => ({ ...prev, [name]: checked }));
+    } else {
+      setForm((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleSubmit = useCallback(
@@ -59,6 +68,10 @@ export default function PatientsPage() {
           date_of_birth: form.date_of_birth || null,
           weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
           color: form.color || null,
+          microchip_id: form.microchip_id?.trim() || null,
+          spayed_neutered: form.spayed_neutered,
+          allergies: form.allergies?.trim() || null,
+          medical_notes: form.medical_notes?.trim() || null,
           is_active: true,
         });
         if (error) {
@@ -72,6 +85,10 @@ export default function PatientsPage() {
             date_of_birth: form.date_of_birth || undefined,
             weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : undefined,
             color: form.color,
+            microchip_id: form.microchip_id?.trim() || undefined,
+            spayed_neutered: form.spayed_neutered,
+            allergies: form.allergies?.trim() || undefined,
+            medical_notes: form.medical_notes?.trim() || undefined,
           });
         }
         await refetch();
@@ -270,6 +287,51 @@ export default function PatientsPage() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Microchip ID</label>
+                      <input
+                        className={styles.formInput}
+                        name="microchip_id"
+                        value={form.microchip_id}
+                        onChange={handleChange}
+                        placeholder="e.g. 985141001234567"
+                      />
+                    </div>
+                    <div className={styles.formGroup} style={{ justifyContent: 'center', paddingTop: '1.25rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-slate)' }}>
+                        <input
+                          type="checkbox"
+                          name="spayed_neutered"
+                          checked={form.spayed_neutered}
+                          onChange={handleChange}
+                          style={{ width: '1.1rem', height: '1.1rem', accentColor: 'var(--color-navy)' }}
+                        />
+                        Spayed / Neutered
+                      </label>
+                    </div>
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Allergies</label>
+                    <input
+                      className={styles.formInput}
+                      name="allergies"
+                      value={form.allergies}
+                      onChange={handleChange}
+                      placeholder="e.g. Penicillin, Chicken protein"
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Medical Notes</label>
+                    <textarea
+                      className={styles.formInput}
+                      name="medical_notes"
+                      value={form.medical_notes}
+                      onChange={handleChange}
+                      placeholder="Pre-existing conditions, behavioral notes, etc."
+                      style={{ minHeight: '60px', resize: 'vertical' }}
+                    />
                   </div>
                 </div>
               </div>

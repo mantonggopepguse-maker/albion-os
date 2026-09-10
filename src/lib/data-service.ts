@@ -61,6 +61,24 @@ import type {
   CustomPayrollAdjustment,
   BranchExpense,
   BranchFinancialInsights,
+  LabOrder,
+  LabStatus,
+  LabResultParameter,
+  HospitalizationRecord,
+  ICUVitalEntry,
+  SurgeryRecord,
+  SurgeryStatus,
+  CashReconciliation,
+  DrugDoseResult,
+  FluidRateResult,
+  AuditLog,
+  AuditCategory,
+  AuditSeverity,
+  ClinicShift,
+  ShiftBlock,
+  PatientReminder,
+  ReminderType,
+  ReminderStatus,
 } from '@/lib/types';
 
 import {
@@ -87,6 +105,14 @@ import {
   MOCK_TREATMENTS,
   MOCK_TREATMENT_MEDICATIONS,
   MOCK_PATIENT_QUEUE,
+  MOCK_LAB_ORDERS,
+  MOCK_HOSPITALIZATIONS,
+  MOCK_SURGERIES,
+  MOCK_CASH_RECONCILIATIONS,
+  MOCK_AUDIT_LOGS,
+  MOCK_EXPENSES,
+  MOCK_SHIFTS,
+  MOCK_REMINDERS,
   findProductById,
 } from '@/lib/mock-data';
 
@@ -459,10 +485,25 @@ export async function transitionInvoice(invoiceId: string, newStatus: string): P
 
   if (invRaw) {
     await supabase.from('invoices').update({ status: newStatus }).eq('id', invoiceId);
+    if (newStatus === 'paid') {
+      const { data: cust } = await supabase.from('customers').select('outstanding_balance').eq('id', invoice.customer_id).single();
+      if (cust) {
+        const newBal = Math.max(0, (cust.outstanding_balance || 0) - invoice.total);
+        await supabase.from('customers').update({ outstanding_balance: newBal }).eq('id', invoice.customer_id);
+      }
+    }
   }
   if (!invRaw && USE_MOCK_DATA) {
     const mockInv = MOCK_INVOICES.find((i) => i.id === invoiceId);
-    if (mockInv) mockInv.status = newStatus as typeof mockInv.status;
+    if (mockInv) {
+      mockInv.status = newStatus as typeof mockInv.status;
+      if (newStatus === 'paid') {
+        const mockCust = MOCK_CUSTOMERS.find((c) => c.id === invoice.customer_id);
+        if (mockCust) {
+          mockCust.outstanding_balance = Math.max(0, mockCust.outstanding_balance - invoice.total);
+        }
+      }
+    }
   }
   return { success: true };
 }
@@ -718,6 +759,104 @@ export async function stockTake(input: StockTakeInput): Promise<ServiceResponse<
   return { success: true, data: { item, difference, notes: input.notes } };
 }
 
+export interface ReceiveSupplierStockInput {
+  supplier_id: string;
+  supplier_name: string;
+  product_id: string;
+  location_id: string;
+  quantity: number;
+  batch_number?: string;
+  expiry_date?: string;
+  notes?: string;
+}
+
+/** Receives inventory from a supplier into a location and records a stock movement */
+export async function receiveSupplierStock(input: ReceiveSupplierStockInput): Promise<ServiceResponse<InventoryItem>> {
+  if (input.quantity <= 0) return { success: false, error: 'Quantity must be greater than 0' };
+  if (!input.product_id) return { success: false, error: 'Product is required' };
+  if (!input.location_id) return { success: false, error: 'Location is required' };
+
+  const supabase = getSupabase();
+  const batchNum = input.batch_number || `BATCH-${Date.now().toString().slice(-4)}`;
+
+  const { data: existing } = await supabase
+    .from('inventory')
+    .select('*')
+    .eq('product_id', input.product_id)
+    .eq('location_id', input.location_id)
+    .limit(1)
+    .maybeSingle();
+
+  let item: InventoryItem;
+
+  if (existing) {
+    const newQty = (existing.quantity || 0) + input.quantity;
+    const status = newQty === 0 ? 'out_of_stock' : newQty <= 50 ? 'low_stock' : 'in_stock';
+    const { data: updated, error: updateError } = await supabase
+      .from('inventory')
+      .update({ quantity: newQty, status })
+      .eq('id', existing.id)
+      .select()
+      .single();
+
+    if (updateError) return { success: false, error: updateError.message };
+    item = updated as InventoryItem;
+  } else {
+    const status = input.quantity <= 50 ? 'low_stock' : 'in_stock';
+    const { data: created, error: createError } = await supabase
+      .from('inventory')
+      .insert({
+        product_id: input.product_id,
+        location_id: input.location_id,
+        quantity: input.quantity,
+        batch_number: batchNum,
+        expiry_date: input.expiry_date || null,
+        status,
+      })
+      .select()
+      .single();
+
+    if (createError) return { success: false, error: createError.message };
+    item = created as InventoryItem;
+  }
+
+  await supabase.from('stock_movements').insert({
+    product_id: input.product_id,
+    to_location_id: input.location_id,
+    from_location_id: null,
+    quantity: input.quantity,
+    movement_type: 'transfer_in',
+    reference_id: input.supplier_id,
+    notes: input.notes || `Received ${input.quantity} units from supplier "${input.supplier_name}"`,
+  });
+
+  if (USE_MOCK_DATA) {
+    const mockIdx = MOCK_INVENTORY.findIndex(
+      (i) => i.product_id === input.product_id && i.location_id === input.location_id
+    );
+    if (mockIdx !== -1) {
+      MOCK_INVENTORY[mockIdx].quantity += input.quantity;
+      MOCK_INVENTORY[mockIdx].status =
+        MOCK_INVENTORY[mockIdx].quantity === 0 ? 'out_of_stock' : MOCK_INVENTORY[mockIdx].quantity <= 50 ? 'low_stock' : 'in_stock';
+      item = MOCK_INVENTORY[mockIdx];
+    } else {
+      const mockNew: InventoryItem = {
+        id: `inv-${Date.now()}`,
+        product_id: input.product_id,
+        location_id: input.location_id,
+        quantity: input.quantity,
+        batch_number: batchNum,
+        expiry_date: input.expiry_date || '',
+        status: input.quantity <= 50 ? 'low_stock' : 'in_stock',
+      };
+      MOCK_INVENTORY.push(mockNew);
+      item = mockNew;
+    }
+  }
+
+  return { success: true, data: item };
+}
+
 /* ============================================================
    6. CHAT MESSAGES
    ============================================================ */
@@ -775,6 +914,7 @@ export interface AddStaffUserInput {
   email: string;
   full_name: string;
   role: UserRole;
+  roles?: UserRole[];
   location_id: string | null;
   phone: string | null;
 }
@@ -785,11 +925,14 @@ export async function addStaffUser(input: AddStaffUserInput): Promise<ServiceRes
   if (!input.full_name.trim()) return { success: false, error: 'Full name is required' };
   if (!input.role) return { success: false, error: 'Role is required' };
 
+  const effectiveRoles = input.roles && input.roles.length > 0 ? input.roles : [input.role];
+
   const supabase = getSupabase();
   const { data, error } = await supabase.from('profiles').insert({
     email: input.email.trim().toLowerCase(),
     full_name: input.full_name.trim(),
     role: input.role,
+    roles: effectiveRoles,
     location_id: input.location_id || null,
     phone: input.phone?.trim() || null,
     is_active: true,
@@ -809,6 +952,7 @@ export async function addStaffUser(input: AddStaffUserInput): Promise<ServiceRes
     email: input.email.trim().toLowerCase(),
     full_name: input.full_name.trim(),
     role: input.role,
+    roles: effectiveRoles,
     location_id: input.location_id || null,
     avatar_url: null,
     phone: input.phone?.trim() || null,
@@ -844,6 +988,7 @@ export async function updateStaffUser(userId: string, input: Partial<AddStaffUse
     if (input.full_name !== undefined) updates.full_name = input.full_name.trim();
     if (input.email !== undefined) updates.email = input.email.trim().toLowerCase();
     if (input.role !== undefined) updates.role = input.role;
+    if (input.roles !== undefined) updates.roles = input.roles;
     if (input.location_id !== undefined) updates.location_id = input.location_id || null;
     if (input.phone !== undefined) updates.phone = input.phone?.trim() || null;
     await supabase.from('profiles').update(updates).eq('id', userId);
@@ -857,6 +1002,7 @@ export async function updateStaffUser(userId: string, input: Partial<AddStaffUse
       user.email = input.email.trim().toLowerCase();
     }
     if (input.role !== undefined) user.role = input.role;
+    if (input.roles !== undefined) user.roles = input.roles;
     if (input.location_id !== undefined) user.location_id = input.location_id || null;
     if (input.phone !== undefined) user.phone = input.phone?.trim() || null;
   }
@@ -2032,6 +2178,72 @@ export async function getVetServices(): Promise<VetService[]> {
   return [];
 }
 
+export async function createVetService(input: {
+  name: string;
+  description?: string | null;
+  category: string;
+  species: string;
+  price: number;
+  duration_minutes?: number;
+}): Promise<ServiceResponse<VetService>> {
+  if (!input.name.trim()) return { success: false, error: 'Service name is required' };
+  if (!input.price || input.price < 0) return { success: false, error: 'Valid price is required' };
+
+  const newService: VetService = {
+    id: `vs-${Date.now()}`,
+    name: input.name.trim(),
+    description: input.description?.trim() || null,
+    category: input.category,
+    species: input.species || 'All',
+    price: input.price,
+    duration_minutes: input.duration_minutes || 30,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (USE_MOCK_DATA) {
+    MOCK_VET_SERVICES.push(newService);
+    return { success: true, data: newService };
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('vet_services').insert({
+    name: newService.name,
+    description: newService.description,
+    category: newService.category,
+    species: newService.species,
+    price: newService.price,
+    is_active: true,
+  }).select().single();
+
+  if (!error && data) return { success: true, data: data as VetService };
+  MOCK_VET_SERVICES.push(newService);
+  return { success: true, data: newService };
+}
+
+export async function updateVetService(
+  id: string,
+  updates: Partial<Omit<VetService, 'id' | 'created_at'>>
+): Promise<ServiceResponse<VetService>> {
+  if (USE_MOCK_DATA) {
+    const idx = MOCK_VET_SERVICES.findIndex((s) => s.id === id);
+    if (idx !== -1) {
+      MOCK_VET_SERVICES[idx] = { ...MOCK_VET_SERVICES[idx], ...updates, updated_at: new Date().toISOString() };
+      return { success: true, data: MOCK_VET_SERVICES[idx] };
+    }
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('vet_services').update({
+    ...updates,
+    updated_at: new Date().toISOString(),
+  }).eq('id', id).select().single();
+
+  if (!error && data) return { success: true, data: data as VetService };
+  return { success: false, error: error?.message || 'Failed to update service' };
+}
+
 export async function getTreatments(): Promise<Treatment[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from('treatments').select('*').order('date', { ascending: false });
@@ -2048,26 +2260,151 @@ export async function getTreatmentMedications(treatmentId: string): Promise<Trea
   return [];
 }
 
+export async function addToQueue(input: {
+  patient_id: string;
+  owner_id: string;
+  location_id?: string | null;
+  department: string;
+  priority: 'normal' | 'urgent' | 'emergency';
+  reason?: string;
+}): Promise<ServiceResponse<PatientQueue>> {
+  const supabase = getSupabase();
+  const id = `q-${Date.now()}`;
+  const now = new Date().toISOString();
+  const newEntry: PatientQueue = {
+    id,
+    patient_id: input.patient_id,
+    owner_id: input.owner_id,
+    location_id: input.location_id || null,
+    department: input.department,
+    priority: input.priority,
+    status: 'waiting',
+    reason: input.reason || null,
+    assigned_vet_id: null,
+    called_at: null,
+    completed_at: null,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const { data, error } = await supabase.from('patient_queue').insert(newEntry).select().single();
+  if (!error && data) return { success: true, data: data as PatientQueue };
+  if (USE_MOCK_DATA) {
+    MOCK_PATIENT_QUEUE.unshift(newEntry);
+    return { success: true, data: newEntry };
+  }
+  return { success: false, error: error?.message || 'Failed to add to queue' };
+}
+
+export async function updateQueueStatus(
+  id: string,
+  status: 'waiting' | 'in_consultation' | 'completed' | 'cancelled',
+  vetId?: string
+): Promise<ServiceResponse<PatientQueue>> {
+  const supabase = getSupabase();
+  const now = new Date().toISOString();
+  const updates: Partial<PatientQueue> = {
+    status,
+    updated_at: now,
+    ...(status === 'in_consultation' ? { called_at: now, assigned_vet_id: vetId || null } : {}),
+    ...(status === 'completed' ? { completed_at: now } : {}),
+  };
+
+  const { data, error } = await supabase
+    .from('patient_queue')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (!error && data) return { success: true, data: data as PatientQueue };
+  if (USE_MOCK_DATA) {
+    const item = MOCK_PATIENT_QUEUE.find((q) => q.id === id);
+    if (item) {
+      Object.assign(item, updates);
+      return { success: true, data: item };
+    }
+  }
+  return { success: false, error: error?.message || 'Failed to update queue' };
+}
+
+export async function createTreatment(input: {
+  patient_id: string;
+  vet_id?: string | null;
+  location_id?: string | null;
+  date?: string;
+  chief_complaint: string;
+  diagnosis: string;
+  assessment?: string;
+  plan?: string;
+  status?: 'ongoing' | 'completed' | 'referred';
+  total_cost?: number;
+}): Promise<ServiceResponse<Treatment>> {
+  const supabase = getSupabase();
+  const id = `trt-${Date.now()}`;
+  const now = new Date().toISOString();
+  const newTx: Treatment = {
+    id,
+    patient_id: input.patient_id,
+    vet_id: input.vet_id || null,
+    location_id: input.location_id || null,
+    date: input.date || now.slice(0, 10),
+    chief_complaint: input.chief_complaint,
+    diagnosis: input.diagnosis,
+    assessment: input.assessment || null,
+    plan: input.plan || null,
+    status: input.status || 'ongoing',
+    follow_up_date: null,
+    total_cost: input.total_cost || 0,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const { data, error } = await supabase.from('treatments').insert(newTx).select().single();
+  if (!error && data) return { success: true, data: data as Treatment };
+  if (USE_MOCK_DATA) {
+    MOCK_TREATMENTS.unshift(newTx);
+    return { success: true, data: newTx };
+  }
+  return { success: false, error: error?.message || 'Failed to create treatment' };
+}
+
 /* ============================================================
    18.5. BRANCH FINANCIAL INSIGHTS & EXPENSES
    ============================================================ */
 
 export interface AddBranchExpenseInput {
   location_id: string;
-  category: 'inventory_purchase' | 'utilities' | 'payroll' | 'maintenance' | 'rent' | 'equipment' | 'other';
+  category: 'inventory_purchase' | 'utilities' | 'payroll' | 'maintenance' | 'rent' | 'equipment' | 'fuel' | 'consumables' | 'other';
   amount: number;
   description: string;
   expense_date?: string;
   recorded_by?: string;
+  vendor_name?: string | null;
+  vendor?: string | null;
+  payment_method?: 'cash' | 'bank_transfer' | 'pos' | 'check';
+  receipt_url?: string | null;
 }
 
 export async function getBranchExpenses(locationId?: string): Promise<BranchExpense[]> {
+  if (USE_MOCK_DATA) {
+    let list = [...MOCK_EXPENSES];
+    if (locationId) list = list.filter((e) => e.location_id === locationId);
+    return list.sort((a, b) => new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime());
+  }
+
   const supabase = getSupabase();
-  let query = supabase.from('branch_expenses').select('*').order('expense_date', { ascending: false });
+  let query = supabase.from('branch_expenses').select('*, location:location_id(name), recorder:recorded_by(full_name)').order('expense_date', { ascending: false });
   if (locationId) query = query.eq('location_id', locationId);
   const { data, error } = await query;
-  if (!error && data) return data as BranchExpense[];
-  return [];
+  if (!error && data && data.length > 0) {
+    return data.map((d: any) => ({
+      ...d,
+      location_name: d.location?.name || 'Branch',
+      recorder_name: d.recorder?.full_name || 'Staff User',
+    }));
+  }
+  return [...MOCK_EXPENSES];
 }
 
 export async function addBranchExpense(input: AddBranchExpenseInput): Promise<ServiceResponse<BranchExpense>> {
@@ -2075,8 +2412,29 @@ export async function addBranchExpense(input: AddBranchExpenseInput): Promise<Se
   if (!input.amount || input.amount <= 0) return { success: false, error: 'Valid amount is required' };
   if (!input.description.trim()) return { success: false, error: 'Description is required' };
 
-  const supabase = getSupabase();
   const expenseDate = input.expense_date || new Date().toISOString().slice(0, 10);
+  const vendorVal = input.vendor_name || input.vendor || null;
+  const newExpense: BranchExpense = {
+    id: `exp-${Date.now()}`,
+    location_id: input.location_id,
+    category: input.category,
+    amount: input.amount,
+    description: input.description.trim(),
+    expense_date: expenseDate,
+    recorded_by: input.recorded_by || 'System',
+    vendor_name: vendorVal,
+    vendor: vendorVal,
+    payment_method: input.payment_method || 'bank_transfer',
+    receipt_url: input.receipt_url || null,
+    created_at: new Date().toISOString(),
+  };
+
+  if (USE_MOCK_DATA) {
+    MOCK_EXPENSES.unshift(newExpense);
+    return { success: true, data: newExpense };
+  }
+
+  const supabase = getSupabase();
   const { data, error } = await supabase.from('branch_expenses').insert({
     location_id: input.location_id,
     category: input.category,
@@ -2087,7 +2445,8 @@ export async function addBranchExpense(input: AddBranchExpenseInput): Promise<Se
   }).select().single();
 
   if (!error && data) return { success: true, data: data as BranchExpense };
-  return { success: false, error: error?.message || 'Failed to record expense' };
+  MOCK_EXPENSES.unshift(newExpense);
+  return { success: true, data: newExpense };
 }
 
 export async function getBranchFinancialInsights(locationId: string): Promise<ServiceResponse<BranchFinancialInsights>> {
@@ -2128,6 +2487,270 @@ export async function getBranchFinancialInsights(locationId: string): Promise<Se
 }
 
 /* ============================================================
+   18.6. ENTERPRISE AUDIT LOG VAULT
+   ============================================================ */
+
+export interface GetAuditLogsFilter {
+  category?: AuditCategory;
+  search?: string;
+  limit?: number;
+}
+
+export async function getAuditLogs(filter?: GetAuditLogsFilter | AuditCategory): Promise<AuditLog[]> {
+  const normFilter: GetAuditLogsFilter | undefined =
+    typeof filter === 'string' ? { category: filter } : filter;
+
+  if (USE_MOCK_DATA) {
+    let list = [...MOCK_AUDIT_LOGS];
+    if (normFilter?.category) list = list.filter((a) => a.category === normFilter.category);
+    if (normFilter?.search && typeof normFilter.search === 'string') {
+      const q = normFilter.search.toLowerCase();
+      list = list.filter(
+        (a) =>
+          a.action.toLowerCase().includes(q) ||
+          a.actor_name?.toLowerCase().includes(q) ||
+          a.actor_role.toLowerCase().includes(q) ||
+          a.table_name.toLowerCase().includes(q) ||
+          JSON.stringify(a.details || {}).toLowerCase().includes(q)
+      );
+    }
+    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  const supabase = getSupabase();
+  let query = supabase.from('audit_log').select('*, actor:actor_id(full_name, role)').order('created_at', { ascending: false });
+  if (normFilter?.limit) query = query.limit(normFilter.limit);
+  const { data, error } = await query;
+  if (!error && data && data.length > 0) {
+    let mapped = data.map((d: any) => ({
+      ...d,
+      actor_name: d.actor?.full_name || 'System User',
+      actor_role: d.actor_role || d.actor?.role || 'user',
+      category: (d.table_name === 'payments' || d.table_name === 'invoices' ? 'financial' :
+                 d.table_name?.includes('narcotics') ? 'narcotics' :
+                 d.table_name?.includes('stock') ? 'inventory' :
+                 d.table_name?.includes('auth') ? 'security' :
+                 d.table_name?.includes('surg') || d.table_name?.includes('treat') ? 'clinical' : 'system') as AuditCategory,
+      severity: (d.action === 'rejected' ? 'warning' : d.details?.discrepancy ? 'critical' : 'info') as AuditSeverity,
+    })) as AuditLog[];
+
+    if (normFilter?.category) mapped = mapped.filter((a) => a.category === normFilter.category);
+    if (normFilter?.search && typeof normFilter.search === 'string') {
+      const q = normFilter.search.toLowerCase();
+      mapped = mapped.filter(
+        (a) =>
+          a.action.toLowerCase().includes(q) ||
+          a.actor_name?.toLowerCase().includes(q) ||
+          a.actor_role.toLowerCase().includes(q) ||
+          a.table_name.toLowerCase().includes(q) ||
+          JSON.stringify(a.details || {}).toLowerCase().includes(q)
+      );
+    }
+    return mapped;
+  }
+  return [...MOCK_AUDIT_LOGS];
+}
+
+export async function logAuditEvent(input: {
+  table_name?: string;
+  record_id?: string;
+  entity_type?: string;
+  entity_id?: string;
+  action: string;
+  actor_id?: string;
+  actor_name?: string;
+  actor_role?: string;
+  user_id?: string;
+  user_name?: string;
+  category?: AuditCategory;
+  severity?: AuditSeverity;
+  details?: Record<string, any>;
+  ip_address?: string | null;
+}): Promise<ServiceResponse<AuditLog>> {
+  const tableName = input.table_name || input.entity_type || 'general';
+  const recordId = input.record_id || input.entity_id || `rec-${Date.now()}`;
+  const actorId = input.actor_id || input.user_id || 'system';
+  const actorName = input.actor_name || input.user_name || 'System User';
+  const actorRole = input.actor_role || 'user';
+
+  const newEntry: AuditLog = {
+    id: `audit-${Date.now()}`,
+    table_name: tableName,
+    record_id: recordId,
+    entity_type: tableName,
+    entity_id: recordId,
+    action: input.action,
+    actor_id: actorId,
+    actor_name: actorName,
+    actor_role: actorRole,
+    user_id: actorId,
+    user_name: actorName,
+    category: input.category || 'system',
+    severity: input.severity || 'info',
+    details: input.details || null,
+    ip_address: input.ip_address || null,
+    created_at: new Date().toISOString(),
+  };
+
+  if (USE_MOCK_DATA) {
+    MOCK_AUDIT_LOGS.unshift(newEntry);
+    return { success: true, data: newEntry };
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('audit_log').insert({
+    table_name: input.table_name,
+    record_id: input.record_id,
+    action: input.action,
+    actor_id: input.actor_id,
+    actor_role: input.actor_role,
+    details: input.details,
+  }).select().single();
+
+  if (!error && data) {
+    return { success: true, data: { ...newEntry, ...data } };
+  }
+  MOCK_AUDIT_LOGS.unshift(newEntry);
+  return { success: true, data: newEntry };
+}
+
+/* ============================================================
+   18.7. CLINIC SHIFTS & DUTY ROSTER
+   ============================================================ */
+
+export async function getClinicShifts(locationId?: string): Promise<ClinicShift[]> {
+  if (USE_MOCK_DATA) {
+    let list = [...MOCK_SHIFTS];
+    if (locationId) list = list.filter((s) => s.location_id === locationId);
+    return list.sort((a, b) => new Date(a.shift_date).getTime() - new Date(b.shift_date).getTime());
+  }
+
+  const supabase = getSupabase();
+  let query = supabase.from('clinic_shifts').select('*').order('shift_date');
+  if (locationId) query = query.eq('location_id', locationId);
+  const { data, error } = await query;
+  if (!error && data && data.length > 0) return data as ClinicShift[];
+  return [...MOCK_SHIFTS];
+}
+
+export async function assignClinicShift(input: {
+  user_id: string;
+  staff_name?: string;
+  role?: string;
+  location_id: string;
+  location_name?: string;
+  shift_date: string;
+  shift_block: ShiftBlock;
+  start_time: string;
+  end_time: string;
+  notes?: string | null;
+}): Promise<ServiceResponse<ClinicShift>> {
+  if (!input.user_id) return { success: false, error: 'Staff member is required' };
+  if (!input.shift_date) return { success: false, error: 'Date is required' };
+
+  const newShift: ClinicShift = {
+    id: `shift-${Date.now()}`,
+    user_id: input.user_id,
+    staff_name: input.staff_name || 'Staff Member',
+    role: input.role || 'clinical_staff',
+    location_id: input.location_id,
+    location_name: input.location_name || 'Clinic',
+    shift_date: input.shift_date,
+    shift_block: input.shift_block,
+    start_time: input.start_time,
+    end_time: input.end_time,
+    notes: input.notes?.trim() || null,
+    created_at: new Date().toISOString(),
+  };
+
+  MOCK_SHIFTS.push(newShift);
+  return { success: true, data: newShift };
+}
+
+export async function deleteClinicShift(id: string): Promise<ServiceResponse> {
+  const idx = MOCK_SHIFTS.findIndex((s) => s.id === id);
+  if (idx !== -1) {
+    MOCK_SHIFTS.splice(idx, 1);
+    return { success: true };
+  }
+  return { success: true };
+}
+
+/* ============================================================
+   18.8. PREVENTIVE CARE & PATIENT RECALLS
+   ============================================================ */
+
+export async function getPatientReminders(status?: ReminderStatus): Promise<PatientReminder[]> {
+  if (USE_MOCK_DATA) {
+    let list = [...MOCK_REMINDERS];
+    if (status) list = list.filter((r) => r.status === status);
+    return list.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+  }
+
+  const supabase = getSupabase();
+  let query = supabase.from('patient_reminders').select('*').order('due_date');
+  if (status) query = query.eq('status', status);
+  const { data, error } = await query;
+  if (!error && data && data.length > 0) return data as PatientReminder[];
+  return [...MOCK_REMINDERS];
+}
+
+export async function createPatientReminder(input: {
+  patient_id: string;
+  patient_name?: string;
+  owner_id?: string;
+  owner_name?: string;
+  owner_phone?: string;
+  species?: string;
+  reminder_type: ReminderType;
+  title: string;
+  due_date: string;
+  notes?: string | null;
+}): Promise<ServiceResponse<PatientReminder>> {
+  if (!input.patient_id) return { success: false, error: 'Patient is required' };
+  if (!input.title.trim()) return { success: false, error: 'Reminder title is required' };
+  if (!input.due_date) return { success: false, error: 'Due date is required' };
+
+  const newReminder: PatientReminder = {
+    id: `rem-${Date.now()}`,
+    patient_id: input.patient_id,
+    patient_name: input.patient_name || 'Pet',
+    owner_id: input.owner_id,
+    owner_name: input.owner_name,
+    owner_phone: input.owner_phone,
+    species: input.species || 'Dog',
+    reminder_type: input.reminder_type,
+    title: input.title.trim(),
+    due_date: input.due_date,
+    status: 'pending',
+    notes: input.notes?.trim() || null,
+    last_notified_at: null,
+    created_at: new Date().toISOString(),
+  };
+
+  MOCK_REMINDERS.push(newReminder);
+  return { success: true, data: newReminder };
+}
+
+export async function updatePatientReminderStatus(
+  id: string,
+  status: ReminderStatus
+): Promise<ServiceResponse<PatientReminder>> {
+  const idx = MOCK_REMINDERS.findIndex((r) => r.id === id);
+  if (idx !== -1) {
+    MOCK_REMINDERS[idx] = {
+      ...MOCK_REMINDERS[idx],
+      status,
+      last_notified_at: status === 'sent' ? new Date().toISOString() : MOCK_REMINDERS[idx].last_notified_at,
+    };
+    return { success: true, data: MOCK_REMINDERS[idx] };
+  }
+  return { success: false, error: 'Reminder not found' };
+}
+
+
+
+/* ============================================================
    19. RE-EXPORTS (Convenience)
    ============================================================ */
 
@@ -2151,6 +2774,10 @@ export {
   MOCK_TREATMENT_MEDICATIONS,
   MOCK_PATIENT_QUEUE,
   MOCK_VET_SERVICES,
+  MOCK_LAB_ORDERS,
+  MOCK_HOSPITALIZATIONS,
+  MOCK_SURGERIES,
+  MOCK_CASH_RECONCILIATIONS,
   findCustomerById,
   findProductById,
   findLocationById,
@@ -2166,3 +2793,271 @@ export {
   getPerformanceTargetsByUserId,
   getPerformanceReviewsByUserId,
 } from '@/lib/mock-data';
+
+/* ============================================================
+   20. CLINICAL SPECIALTY OPERATIONS & CALCULATORS
+   ============================================================ */
+
+/* ── Diagnostic Lab Hub ── */
+
+export async function getLabOrders(): Promise<LabOrder[]> {
+  const supabase = getSupabase();
+  const { data } = await supabase.from('lab_orders').select('*').order('collected_at', { ascending: false });
+  if (data && data.length > 0) return data as LabOrder[];
+  return [...MOCK_LAB_ORDERS];
+}
+
+export async function createLabOrder(input: Omit<LabOrder, 'id' | 'order_number' | 'collected_at'>): Promise<ServiceResponse<LabOrder>> {
+  const newOrder: LabOrder = {
+    ...input,
+    id: `lab-${Date.now()}`,
+    order_number: `LAB-${new Date().getFullYear()}-${String(MOCK_LAB_ORDERS.length + 1).padStart(3, '0')}`,
+    collected_at: new Date().toISOString(),
+  };
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('lab_orders').insert(newOrder).select().single();
+  if (!error && data) return { success: true, data: data as LabOrder };
+
+  if (USE_MOCK_DATA) {
+    MOCK_LAB_ORDERS.unshift(newOrder);
+  }
+  return { success: true, data: newOrder };
+}
+
+export async function updateLabOrderStatus(
+  id: string,
+  status: LabStatus,
+  results?: LabResultParameter[],
+  pathology_summary?: string,
+  reviewed_by?: string
+): Promise<ServiceResponse<LabOrder>> {
+  const supabase = getSupabase();
+  const updates: Partial<LabOrder> = {
+    status,
+    ...(results ? { results } : {}),
+    ...(pathology_summary ? { pathology_summary } : {}),
+    ...(reviewed_by ? { reviewed_by } : {}),
+    ...(status === 'ready' || status === 'reviewed' ? { completed_at: new Date().toISOString() } : {}),
+  };
+
+  await supabase.from('lab_orders').update(updates).eq('id', id);
+
+  if (USE_MOCK_DATA) {
+    const order = MOCK_LAB_ORDERS.find((o) => o.id === id);
+    if (order) {
+      Object.assign(order, updates);
+      return { success: true, data: order };
+    }
+  }
+  return { success: true };
+}
+
+/* ── Inpatient ICU & Hospitalization ── */
+
+export async function getHospitalizations(): Promise<HospitalizationRecord[]> {
+  const supabase = getSupabase();
+  const { data } = await supabase.from('hospitalizations').select('*').order('admission_date', { ascending: false });
+  if (data && data.length > 0) return data as HospitalizationRecord[];
+  return [...MOCK_HOSPITALIZATIONS];
+}
+
+export async function admitToHospital(
+  input: Omit<HospitalizationRecord, 'id' | 'admission_date' | 'vitals'>
+): Promise<ServiceResponse<HospitalizationRecord>> {
+  const newRecord: HospitalizationRecord = {
+    ...input,
+    id: `hosp-${Date.now()}`,
+    admission_date: new Date().toISOString(),
+    vitals: [],
+  };
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('hospitalizations').insert(newRecord).select().single();
+  if (!error && data) return { success: true, data: data as HospitalizationRecord };
+
+  if (USE_MOCK_DATA) {
+    MOCK_HOSPITALIZATIONS.unshift(newRecord);
+  }
+  return { success: true, data: newRecord };
+}
+
+export async function addICUVital(
+  hospId: string,
+  vital: Omit<ICUVitalEntry, 'id' | 'timestamp'>
+): Promise<ServiceResponse<ICUVitalEntry>> {
+  const newVital: ICUVitalEntry = {
+    ...vital,
+    id: `vit-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+  };
+
+  const supabase = getSupabase();
+  await supabase.from('icu_vitals').insert({ ...newVital, hospitalization_id: hospId });
+
+  if (USE_MOCK_DATA) {
+    const hosp = MOCK_HOSPITALIZATIONS.find((h) => h.id === hospId);
+    if (hosp) {
+      hosp.vitals.push(newVital);
+      return { success: true, data: newVital };
+    }
+  }
+  return { success: true, data: newVital };
+}
+
+export async function dischargeHospitalization(
+  hospId: string,
+  summary: string
+): Promise<ServiceResponse<HospitalizationRecord>> {
+  const updates = {
+    status: 'discharged' as const,
+    discharge_date: new Date().toISOString(),
+    discharge_summary: summary,
+  };
+
+  const supabase = getSupabase();
+  await supabase.from('hospitalizations').update(updates).eq('id', hospId);
+
+  if (USE_MOCK_DATA) {
+    const hosp = MOCK_HOSPITALIZATIONS.find((h) => h.id === hospId);
+    if (hosp) {
+      Object.assign(hosp, updates);
+      return { success: true, data: hosp };
+    }
+  }
+  return { success: true };
+}
+
+/* ── Surgical Suite ── */
+
+export async function getSurgeries(): Promise<SurgeryRecord[]> {
+  const supabase = getSupabase();
+  const { data } = await supabase.from('surgeries').select('*').order('scheduled_date', { ascending: false });
+  if (data && data.length > 0) return data as SurgeryRecord[];
+  return [...MOCK_SURGERIES];
+}
+
+export async function createSurgery(
+  input: Omit<SurgeryRecord, 'id' | 'surgery_number'>
+): Promise<ServiceResponse<SurgeryRecord>> {
+  const newSurgery: SurgeryRecord = {
+    ...input,
+    id: `surg-${Date.now()}`,
+    surgery_number: `SURG-${new Date().getFullYear()}-${String(MOCK_SURGERIES.length + 1).padStart(3, '0')}`,
+  };
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('surgeries').insert(newSurgery).select().single();
+  if (!error && data) return { success: true, data: data as SurgeryRecord };
+
+  if (USE_MOCK_DATA) {
+    MOCK_SURGERIES.unshift(newSurgery);
+  }
+  return { success: true, data: newSurgery };
+}
+
+export async function updateSurgeryStatus(
+  id: string,
+  status: SurgeryStatus,
+  notes?: string
+): Promise<ServiceResponse<SurgeryRecord>> {
+  const updates: Partial<SurgeryRecord> = { status, ...(notes ? { surgical_notes: notes } : {}) };
+
+  const supabase = getSupabase();
+  await supabase.from('surgeries').update(updates).eq('id', id);
+
+  if (USE_MOCK_DATA) {
+    const surgery = MOCK_SURGERIES.find((s) => s.id === id);
+    if (surgery) {
+      Object.assign(surgery, updates);
+      return { success: true, data: surgery };
+    }
+  }
+  return { success: true };
+}
+
+/* ── Cash Reconciliation ── */
+
+export async function getCashReconciliations(): Promise<CashReconciliation[]> {
+  const supabase = getSupabase();
+  const { data } = await supabase.from('cash_reconciliations').select('*').order('created_at', { ascending: false });
+  if (data && data.length > 0) return data as CashReconciliation[];
+  return [...MOCK_CASH_RECONCILIATIONS];
+}
+
+export async function submitCashReconciliation(
+  input: Omit<CashReconciliation, 'id' | 'created_at' | 'total_expected' | 'total_actual' | 'variance' | 'status'>
+): Promise<ServiceResponse<CashReconciliation>> {
+  const total_expected = input.cash_expected + input.pos_card_expected + input.bank_transfer_expected;
+  const total_actual = input.cash_actual + input.pos_card_actual + input.bank_transfer_actual;
+  const variance = total_actual - total_expected;
+  const status = variance === 0 ? 'balanced' : 'discrepancy';
+
+  const newRec: CashReconciliation = {
+    ...input,
+    id: `rec-${Date.now()}`,
+    total_expected,
+    total_actual,
+    variance,
+    status,
+    created_at: new Date().toISOString(),
+  };
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('cash_reconciliations').insert(newRec).select().single();
+  if (!error && data) return { success: true, data: data as CashReconciliation };
+
+  if (USE_MOCK_DATA) {
+    MOCK_CASH_RECONCILIATIONS.unshift(newRec);
+  }
+  return { success: true, data: newRec };
+}
+
+/* ── Clinical Calculators Math ── */
+
+/**
+ * Calculates standard veterinary medication dosage volume in mL.
+ * Volume (mL) = (Weight in kg × Dose in mg/kg) ÷ Drug Concentration in mg/mL
+ */
+export function calculateDrugDose(
+  weightKg: number,
+  doseMgKg: number,
+  concentrationMgMl: number
+): DrugDoseResult {
+  const totalDoseMg = Number((weightKg * doseMgKg).toFixed(2));
+  const volumeMl = concentrationMgMl > 0 ? Number((totalDoseMg / concentrationMgMl).toFixed(2)) : 0;
+  return {
+    weightKg,
+    doseMgKg,
+    totalDoseMg,
+    concentrationMgMl,
+    volumeMl,
+  };
+}
+
+/**
+ * Calculates 24-hour veterinary fluid therapy requirement.
+ * Maintenance (approx 50-60 mL/kg/day) + Dehydration deficit (Weight in kg × Dehydration % × 1000 mL) + Ongoing losses
+ */
+export function calculateFluidRate(
+  weightKg: number,
+  dehydrationPct: number = 0,
+  ongoingLossesMl: number = 0
+): FluidRateResult {
+  const maintenanceMlDay = Math.round(weightKg * 55); // standard 55 mL/kg/day
+  const dehydrationDeficitMl = Math.round(weightKg * (dehydrationPct / 100) * 1000);
+  const total24hMl = maintenanceMlDay + dehydrationDeficitMl + ongoingLossesMl;
+  const hourlyRateMlHr = Number((total24hMl / 24).toFixed(1));
+  // Assuming standard 20 drops/mL IV infusion set
+  const dropsPerMinute = Math.round((hourlyRateMlHr * 20) / 60);
+
+  return {
+    weightKg,
+    maintenanceMlDay,
+    dehydrationDeficitMl,
+    ongoingLossesMlDay: ongoingLossesMl,
+    total24hMl,
+    hourlyRateMlHr,
+    dropsPerMinute,
+  };
+}

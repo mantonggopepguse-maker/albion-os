@@ -6,7 +6,7 @@ import {
   useClinicAppointments,
   useClinicPatients,
 } from '@/hooks/use-supabase-data';
-import { addAppointment } from '@/lib/data-service';
+import { addAppointment, updateAppointmentStatus } from '@/lib/data-service';
 import styles from './appointments.module.css';
 
 const SPECIES_ICONS: Record<string, string> = {
@@ -87,6 +87,14 @@ export default function AppointmentsPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const handleStatusChange = async (appointmentId: string, newStatus: string) => {
+    setUpdatingId(appointmentId);
+    await updateAppointmentStatus(appointmentId, newStatus);
+    await refetch();
+    setUpdatingId(null);
+  };
 
   const loading = apptsLoading || patientsLoading;
 
@@ -187,9 +195,51 @@ export default function AppointmentsPage() {
                       <div className={styles.appointmentReason}>{appt.reason}</div>
                     )}
                   </div>
-                  <span className={`${styles.statusBadge} ${statusClass(appt.status)}`}>
-                    {appt.status.replace(/_/g, ' ')}
-                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
+                    <span className={`${styles.statusBadge} ${statusClass(appt.status)}`}>
+                      {appt.status.replace(/_/g, ' ')}
+                    </span>
+                    {(appt.status as string === 'scheduled' || appt.status as string === 'confirmed') && (
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button
+                          type="button"
+                          disabled={updatingId === appt.id}
+                          onClick={() => handleStatusChange(appt.id, 'checked_in')}
+                          style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem', fontWeight: 600, background: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                          Check In
+                        </button>
+                        <button
+                          type="button"
+                          disabled={updatingId === appt.id}
+                          onClick={() => handleStatusChange(appt.id, 'cancelled')}
+                          style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem', fontWeight: 600, background: '#fff', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                    {appt.status === 'checked_in' && (
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button
+                          type="button"
+                          disabled={updatingId === appt.id}
+                          onClick={() => handleStatusChange(appt.id, 'completed')}
+                          style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem', fontWeight: 600, background: '#15803d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                          Complete
+                        </button>
+                        <button
+                          type="button"
+                          disabled={updatingId === appt.id}
+                          onClick={() => handleStatusChange(appt.id, 'cancelled')}
+                          style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem', fontWeight: 600, background: '#fff', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

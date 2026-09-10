@@ -1,0 +1,262 @@
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  font-family: system-ui, sans-serif;
+  color: #6b7280;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 48px;
+  font-family: 'Open Sans', system-ui, sans-serif;
+  color: #1f2937;
+  background: #fff;
+  min-height: 100vh;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #093961;
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+}
+
+.logoRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logoImg {
+  height: 48px;
+  width: auto;
+}
+
+.companyName {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #093961;
+}
+
+.companyTagline {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.reportTitle {
+  text-align: right;
+}
+
+.reportHeading {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #093961;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reportNumber {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.metaRow {
+  margin-bottom: 20px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.metaBadge {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.metaDate {
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.kpiBox {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.kpiLabel {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.kpiValue {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #093961;
+}
+
+.itemsTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 32px;
+  font-size: 13px;
+}
+
+.tableHead tr {
+  background: #f8fafc;
+  border-bottom: 2px solid #cbd5e1;
+}
+
+.tableHead th {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 700;
+  color: #093961;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tableBody tr {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tableBody tr:nth-child(even) {
+  background: #fafafa;
+}
+
+.tableBody td {
+  padding: 10px 12px;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.totalsSection {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 40px;
+}
+
+.totalsInner {
+  width: 320px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.totalRow {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.totalLabel {
+  color: #64748b;
+}
+
+.grandTotalRow {
+  display: flex;
+  justify-content: space-between;
+  border-top: 2px solid #cbd5e1;
+  padding-top: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #093961;
+}
+
+.signOffGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  margin-bottom: 40px;
+  padding-top: 24px;
+}
+
+.signOffBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.signOffLine {
+  border-bottom: 1px dashed #94a3b8;
+  height: 36px;
+}
+
+.signOffLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.footer {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 16px;
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.printActions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f1f5f9;
+  padding: 12px 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.printBtn {
+  background: #093961;
+  color: white;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media print {
+  .printActions {
+    display: none !important;
+  }
+  .container {
+    padding: 0;
+    max-width: 100%;
+  }
+  body {
+    background: #fff;
+  }
+}

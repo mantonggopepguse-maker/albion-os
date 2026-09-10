@@ -82,7 +82,7 @@ export default function MobileMenu() {
   /* ── Role-filtered navigation ──
      Reuses the exact same filter as the desktop sidebar, so mobile and
      desktop users see identical, permission-aware menus. */
-  const navItems = getNavItemsForRole(user.role);
+  const navItems = getNavItemsForRole(user.role, user.roles);
 
   /* ── Current page detection ──
      Same rules as the sidebar: exact match, or a sub-path of the item's
@@ -107,6 +107,10 @@ export default function MobileMenu() {
     logout();
     router.push('/login');
   };
+
+  const roleDisplay = user.roles && user.roles.length > 1
+    ? user.roles.map((r) => getRoleLabel(r)).join(' · ')
+    : getRoleLabel(user.role);
 
   return (
     <div className={styles.root}>
@@ -203,7 +207,7 @@ export default function MobileMenu() {
                 </div>
                 <div className={styles.userInfo}>
                   <span className={styles.userName}>{user.full_name}</span>
-                  <span className={styles.userRole}>{getRoleLabel(user.role)}</span>
+                  <span className={styles.userRole} title={roleDisplay}>{roleDisplay}</span>
                 </div>
                 <button className={styles.logoutBtn} onClick={handleLogout} title="Logout">
                   <span aria-hidden="true">🚪</span> Logout

@@ -26,9 +26,9 @@ COPY --from=deps /app/node_modules ./node_modules
 
 # Build-time configuration — Next.js inlines NEXT_PUBLIC_* values at build time.
 # Pass real values with --build-arg (e.g. in CI/CD); defaults keep the build green.
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-ARG NEXT_PUBLIC_ENABLE_DEMO_LOGIN=false
+ARG NEXT_PUBLIC_SUPABASE_URL=https://knabfxzouliunawxirdh.supabase.co
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_5fgcVfjX5XVLK3pdr0c2Jg_M6ffJC19
+ARG NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true
 ARG NEXT_PUBLIC_USE_MOCK=false
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
@@ -44,6 +44,7 @@ WORKDIR /app
 
 # Set Node to production mode
 ENV NODE_ENV=production
+ENV HOSTNAME="0.0.0.0"
 
 # Create a non-root user for security
 RUN addgroup --system --gid 1001 nodejs

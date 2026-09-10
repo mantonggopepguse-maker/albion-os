@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import Topbar from '@/components/layout/Topbar';
 import { useAuth } from '@/lib/auth-context';
-import { useCustomers, useInvoices, usePayments, useInventory, useProducts } from '@/hooks/use-supabase-data';
+import { useCustomers, useInvoices, usePayments, useInventory, useProducts, useExpenses } from '@/hooks/use-supabase-data';
 import Modal from '@/components/ui/Modal';
 import styles from './reports.module.css';
 
@@ -19,9 +19,31 @@ interface GeneratedReport {
   type: string;
   title: string;
   dateRange: string;
+  dateFrom?: string;
+  dateTo?: string;
   generatedAt: string;
   generatedBy: string;
   summary: string;
+}
+
+function exportToCsv(filename: string, headers: string[], rows: (string | number)[][]) {
+  const escapeCsv = (val: string | number) => {
+    const s = String(val ?? '').replace(/"/g, '""');
+    return `"${s}"`;
+  };
+  const content = [
+    headers.map(escapeCsv).join(','),
+    ...rows.map((row) => row.map(escapeCsv).join(',')),
+  ].join('\r\n');
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `${filename}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 const REPORT_TYPES: ReportCard[] = [
@@ -42,6 +64,12 @@ const REPORT_TYPES: ReportCard[] = [
     title: 'Financial Report',
     icon: '💰',
     description: 'Receivables, collections, aging analysis',
+  },
+  {
+    id: 'expenses-pl',
+    title: 'Operating P&L Report',
+    icon: '📉',
+    description: 'Operating overheads, diesel generator, consumables, and net margin',
   },
   {
     id: 'customer',
@@ -75,7 +103,7 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-NG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-type ReportView = 'sales' | 'inventory' | 'financial' | 'customer' | 'rep-performance' | 'expiry' | null;
+type ReportView = 'sales' | 'inventory' | 'financial' | 'customer' | 'rep-performance' | 'expiry' | 'expenses-pl' | null;
 
 export default function ReportsPage() {
   const { user: currentUser } = useAuth();
@@ -84,6 +112,7 @@ export default function ReportsPage() {
   const { payments } = usePayments();
   const { inventory } = useInventory();
   const { products } = useProducts(true);
+  const { expenses } = useExpenses();
 
   const [nowRef] = useState(() => Date.now());
 
@@ -93,6 +122,25 @@ export default function ReportsPage() {
   const [dateTo, setDateTo] = useState('');
   const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([]);
   const [viewReport, setViewReport] = useState<ReportView>(null);
+  const [viewReportItem, setViewReportItem] = useState<GeneratedReport | null>(null);
+
+  const scopedInvoices = useMemo(() => {
+    if (!viewReportItem?.dateFrom && !viewReportItem?.dateTo) return invoices;
+    return invoices.filter((inv) => {
+      if (viewReportItem.dateFrom && new Date(inv.created_at) < new Date(viewReportItem.dateFrom)) return false;
+      if (viewReportItem.dateTo && new Date(inv.created_at) > new Date(viewReportItem.dateTo + 'T23:59:59')) return false;
+      return true;
+    });
+  }, [invoices, viewReportItem]);
+
+  const scopedPayments = useMemo(() => {
+    if (!viewReportItem?.dateFrom && !viewReportItem?.dateTo) return payments;
+    return payments.filter((p) => {
+      if (viewReportItem.dateFrom && new Date(p.created_at) < new Date(viewReportItem.dateFrom)) return false;
+      if (viewReportItem.dateTo && new Date(p.created_at) > new Date(viewReportItem.dateTo + 'T23:59:59')) return false;
+      return true;
+    });
+  }, [payments, viewReportItem]);
 
   const handleGenerate = useCallback((report: ReportCard) => {
     setActiveReport(report);
@@ -104,11 +152,22 @@ export default function ReportsPage() {
   const generateReport = useCallback(() => {
     if (!activeReport) return;
 
+    const inRangeInvoices = invoices.filter((inv) => {
+      if (dateFrom && new Date(inv.created_at) < new Date(dateFrom)) return false;
+      if (dateTo && new Date(inv.created_at) > new Date(dateTo + 'T23:59:59')) return false;
+      return true;
+    });
+    const inRangePayments = payments.filter((p) => {
+      if (dateFrom && new Date(p.created_at) < new Date(dateFrom)) return false;
+      if (dateTo && new Date(p.created_at) > new Date(dateTo + 'T23:59:59')) return false;
+      return true;
+    });
+
     const buildSummaryLocal = (type: string): string => {
       switch (type) {
         case 'sales': {
-          const totalRevenue = invoices.reduce((s, i) => s + i.total, 0);
-          const totalInvoices = invoices.length;
+          const totalRevenue = inRangeInvoices.reduce((s, i) => s + i.total, 0);
+          const totalInvoices = inRangeInvoices.length;
           return `${totalInvoices} invoices, ${formatNaira(totalRevenue)} total revenue`;
         }
         case 'inventory': {
@@ -121,8 +180,8 @@ export default function ReportsPage() {
         }
         case 'financial': {
           const totalOutstanding = customers.reduce((s, c) => s + c.outstanding_balance, 0);
-          const totalApproved = payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
-          const totalPending = payments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0);
+          const totalApproved = inRangePayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
+          const totalPending = inRangePayments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0);
           return `${formatNaira(totalOutstanding)} outstanding, ${formatNaira(totalApproved)} collected, ${formatNaira(totalPending)} pending`;
         }
         case 'customer': {
@@ -131,8 +190,8 @@ export default function ReportsPage() {
           return `${activeCustomers} active customers, ${withBalance} with outstanding balance`;
         }
         case 'rep-performance': {
-          const totalInvoiced = invoices.reduce((s, i) => s + i.total, 0);
-          const totalCollected = payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
+          const totalInvoiced = inRangeInvoices.reduce((s, i) => s + i.total, 0);
+          const totalCollected = inRangePayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
           const collectionRate = totalInvoiced > 0 ? Math.round((totalCollected / totalInvoiced) * 100) : 0;
           return `${formatNaira(totalInvoiced)} invoiced, ${formatNaira(totalCollected)} collected (${collectionRate}% rate)`;
         }
@@ -151,6 +210,12 @@ export default function ReportsPage() {
           }).length;
           return `${within30} expiring within 30 days, ${within60} within 60 days, ${within90} within 90 days`;
         }
+        case 'expenses-pl': {
+          const totalOutflow = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+          const totalCollected = scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
+          const netProfit = totalCollected - totalOutflow;
+          return `Operating Expenses: ${formatNaira(totalOutflow)} | Revenue Collected: ${formatNaira(totalCollected)} | Net Operating Profit: ${formatNaira(netProfit)}`;
+        }
         default:
           return '';
       }
@@ -165,6 +230,8 @@ export default function ReportsPage() {
       type: activeReport.id,
       title: activeReport.title,
       dateRange: label,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
       generatedAt: new Date().toISOString(),
       generatedBy: currentUser?.full_name || 'Unknown',
       summary: buildSummaryLocal(activeReport.id),
@@ -173,10 +240,133 @@ export default function ReportsPage() {
     setGeneratedReports((prev) => [report, ...prev]);
     setShowGenerateModal(false);
     setActiveReport(null);
-  }, [activeReport, dateFrom, dateTo, currentUser, nowRef, invoices, payments, inventory, customers]);
+  }, [activeReport, dateFrom, dateTo, currentUser, nowRef, invoices, payments, inventory, customers, expenses, scopedPayments]);
+
+  const handleExportCurrentReport = useCallback(() => {
+    if (!viewReport) return;
+    const dateTag = new Date().toISOString().slice(0, 10);
+    switch (viewReport) {
+      case 'sales': {
+        const headers = ['Invoice Number', 'Status', 'Total (NGN)', 'Created Date'];
+        const rows = scopedInvoices.map((inv) => [inv.invoice_number, inv.status, inv.total, formatDate(inv.created_at)]);
+        exportToCsv(`sales_report_${dateTag}`, headers, rows);
+        break;
+      }
+      case 'inventory': {
+        const headers = ['Product', 'Batch', 'Quantity', 'Expiry Date', 'Status'];
+        const rows = inventory.map((item) => [
+          products.find((p) => p.id === item.product_id)?.name || item.product_id,
+          item.batch_number,
+          item.quantity,
+          formatDate(item.expiry_date),
+          item.status.replace('_', ' '),
+        ]);
+        exportToCsv(`inventory_report_${dateTag}`, headers, rows);
+        break;
+      }
+      case 'financial': {
+        const totalExp = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+        const totalColl = scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
+        const headers = ['Category', 'Amount (NGN)'];
+        const rows = [
+          ['Total Outstanding', customers.reduce((s, c) => s + c.outstanding_balance, 0)],
+          ['Collected (Approved)', totalColl],
+          ['Operating Expenses', totalExp],
+          ['Net Operating Profit', totalColl - totalExp],
+          ['Pending Approval', scopedPayments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0)],
+          ['Rejected', scopedPayments.filter((p) => p.status === 'rejected').reduce((s, p) => s + p.amount, 0)],
+        ];
+        exportToCsv(`financial_report_${dateTag}`, headers, rows);
+        break;
+      }
+      case 'expenses-pl': {
+        const headers = ['Date', 'Location', 'Category', 'Description', 'Vendor', 'Amount (NGN)'];
+        const rows = expenses.map((e) => [
+          e.expense_date,
+          e.location_name || e.location_id,
+          e.category,
+          e.description,
+          e.vendor_name || '—',
+          e.amount,
+        ]);
+        exportToCsv(`operating_pl_report_${dateTag}`, headers, rows);
+        break;
+      }
+      case 'customer': {
+        const headers = ['Business Name', 'Contact Name', 'State', 'Outstanding Balance (NGN)', 'Credit Limit (NGN)', 'Status'];
+        const rows = customers.map((c) => [c.business_name, c.name, c.state, c.outstanding_balance, c.credit_limit, c.is_active === false ? 'Inactive' : 'Active']);
+        exportToCsv(`customer_report_${dateTag}`, headers, rows);
+        break;
+      }
+      case 'rep-performance': {
+        const headers = ['Metric', 'Value'];
+        const totalInvoiced = scopedInvoices.reduce((s, i) => s + i.total, 0);
+        const totalCollected = scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0);
+        const rate = totalInvoiced > 0 ? `${Math.round((totalCollected / totalInvoiced) * 100)}%` : 'N/A';
+        const rows = [
+          ['Total Invoiced (NGN)', totalInvoiced],
+          ['Total Collected (NGN)', totalCollected],
+          ['Collection Rate', rate],
+        ];
+        exportToCsv(`rep_performance_${dateTag}`, headers, rows);
+        break;
+      }
+      case 'expiry': {
+        const headers = ['Batch', 'Quantity', 'Expiry Date', 'Days Left'];
+        const rows = inventory
+          .map((item) => ({ item, days: (new Date(item.expiry_date).getTime() - nowRef) / 86400000 }))
+          .filter(({ days }) => days > 0 && days <= 90)
+          .sort((a, b) => a.days - b.days)
+          .map(({ item, days }) => [item.batch_number, item.quantity, formatDate(item.expiry_date), Math.floor(days)]);
+        exportToCsv(`expiry_report_${dateTag}`, headers, rows);
+        break;
+      }
+    }
+  }, [viewReport, scopedInvoices, scopedPayments, inventory, customers, products, nowRef]);
 
   const viewReportData = viewReport ? (
     <div style={{ padding: '0.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1px solid var(--color-border-light)', paddingBottom: '0.75rem' }}>
+        <div>
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted)' }}>
+            Date Range:
+          </span>{' '}
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-navy)', background: 'var(--color-bg)', padding: '0.2rem 0.6rem', borderRadius: '4px' }}>
+            {viewReportItem?.dateRange || 'All time'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <a
+            href={`/reports/print?type=${viewReport}&range=${encodeURIComponent(viewReportItem?.dateRange || 'All Time')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.generateBtn}
+            style={{
+              width: 'auto',
+              padding: '0.4rem 0.85rem',
+              fontSize: '0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              cursor: 'pointer',
+              textDecoration: 'none',
+              background: 'white',
+              color: 'var(--color-navy)',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            🖨️ Print Executive Report
+          </a>
+          <button
+            className={styles.generateBtn}
+            style={{ width: 'auto', padding: '0.4rem 0.85rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}
+            onClick={handleExportCurrentReport}
+          >
+            📥 Export CSV
+          </button>
+        </div>
+      </div>
+
       {viewReport === 'sales' && (
         <div>
           <h4 style={{ margin: '0 0 1rem', color: 'var(--color-navy)' }}>Sales Report</h4>
@@ -190,7 +380,7 @@ export default function ReportsPage() {
               </tr>
             </thead>
             <tbody>
-              {invoices.map((inv) => (
+              {scopedInvoices.map((inv) => (
                 <tr key={inv.id} style={{ borderBottom: '1px solid var(--color-border-light)' }}>
                   <td style={{ padding: '0.5rem' }}>{inv.invoice_number}</td>
                   <td style={{ padding: '0.5rem' }}><span style={{ textTransform: 'capitalize' }}>{inv.status}</span></td>
@@ -202,8 +392,8 @@ export default function ReportsPage() {
             <tfoot>
               <tr style={{ fontWeight: 700, borderTop: '2px solid var(--color-border)' }}>
                 <td style={{ padding: '0.5rem' }} colSpan={2}>Total</td>
-                <td style={{ padding: '0.5rem' }}>{formatNaira(invoices.reduce((s, i) => s + i.total, 0))}</td>
-                <td style={{ padding: '0.5rem' }}>{invoices.length} invoices</td>
+                <td style={{ padding: '0.5rem' }}>{formatNaira(scopedInvoices.reduce((s, i) => s + i.total, 0))}</td>
+                <td style={{ padding: '0.5rem' }}>{scopedInvoices.length} invoices</td>
               </tr>
             </tfoot>
           </table>
@@ -239,22 +429,32 @@ export default function ReportsPage() {
       {viewReport === 'financial' && (
         <div>
           <h4 style={{ margin: '0 0 1rem', color: 'var(--color-navy)' }}>Financial Report</h4>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
             <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Total Outstanding</div>
               <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-navy)' }}>{formatNaira(customers.reduce((s, c) => s + c.outstanding_balance, 0))}</div>
             </div>
             <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Collected (Approved)</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#15803d' }}>{formatNaira(payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0))}</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#15803d' }}>{formatNaira(scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0))}</div>
+            </div>
+            <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Operating Expenses</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#dc2626' }}>{formatNaira(expenses.reduce((s, e) => s + (e.amount || 0), 0))}</div>
+            </div>
+            <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Net Operating Profit</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0) >= expenses.reduce((s, e) => s + (e.amount || 0), 0) ? '#059669' : '#dc2626' }}>
+                {formatNaira(scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0) - expenses.reduce((s, e) => s + (e.amount || 0), 0))}
+              </div>
             </div>
             <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Pending Approval</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b45309' }}>{formatNaira(payments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0))}</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b45309' }}>{formatNaira(scopedPayments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0))}</div>
             </div>
             <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Rejected</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#dc2626' }}>{formatNaira(payments.filter((p) => p.status === 'rejected').reduce((s, p) => s + p.amount, 0))}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Rejected Payments</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#64748b' }}>{formatNaira(scopedPayments.filter((p) => p.status === 'rejected').reduce((s, p) => s + p.amount, 0))}</div>
             </div>
           </div>
           <h5 style={{ margin: '1rem 0 0.5rem', color: 'var(--color-navy)' }}>Aging Analysis</h5>
@@ -262,7 +462,7 @@ export default function ReportsPage() {
             <thead>
               <tr style={{ borderBottom: '2px solid var(--color-border)', textAlign: 'left' }}>
                 <th style={{ padding: '0.5rem' }}>Customer</th>
-                <th style={{ padding: '0.5rem' }}>Outstanding</th>
+                <th style={{ padding: '0.5rem' }}>Balance</th>
                 <th style={{ padding: '0.5rem' }}>Credit Limit</th>
                 <th style={{ padding: '0.5rem' }}>Utilization</th>
               </tr>
@@ -274,6 +474,62 @@ export default function ReportsPage() {
                   <td style={{ padding: '0.5rem' }}>{formatNaira(c.outstanding_balance)}</td>
                   <td style={{ padding: '0.5rem' }}>{formatNaira(c.credit_limit)}</td>
                   <td style={{ padding: '0.5rem' }}>{Math.round((c.outstanding_balance / c.credit_limit) * 100)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {viewReport === 'expenses-pl' && (
+        <div>
+          <h4 style={{ margin: '0 0 1rem', color: 'var(--color-navy)' }}>Operating Profit & Loss (P&L) Report</h4>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+            Consolidated operating expenditures against verified sales revenue collections.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Gross Revenue Collected</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#15803d' }}>
+                {formatNaira(scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0))}
+              </div>
+            </div>
+            <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Total Operating Expenses</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#dc2626' }}>
+                {formatNaira(expenses.reduce((s, e) => s + (e.amount || 0), 0))}
+              </div>
+            </div>
+            <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Net Operating Margin</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0) >= expenses.reduce((s, e) => s + (e.amount || 0), 0) ? '#059669' : '#dc2626' }}>
+                {formatNaira(scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0) - expenses.reduce((s, e) => s + (e.amount || 0), 0))}
+              </div>
+            </div>
+          </div>
+
+          <h5 style={{ margin: '1rem 0 0.5rem', color: 'var(--color-navy)' }}>Recent Operating Expenditures</h5>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--color-border)', textAlign: 'left' }}>
+                <th style={{ padding: '0.5rem' }}>Date</th>
+                <th style={{ padding: '0.5rem' }}>Location</th>
+                <th style={{ padding: '0.5rem' }}>Category</th>
+                <th style={{ padding: '0.5rem' }}>Description</th>
+                <th style={{ padding: '0.5rem' }}>Vendor / Payee</th>
+                <th style={{ padding: '0.5rem', textAlign: 'right' }}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {expenses.map((exp) => (
+                <tr key={exp.id} style={{ borderBottom: '1px solid var(--color-border-light)' }}>
+                  <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>{formatDate(exp.expense_date)}</td>
+                  <td style={{ padding: '0.5rem' }}>{exp.location_name || 'Branch'}</td>
+                  <td style={{ padding: '0.5rem', textTransform: 'capitalize' }}>{exp.category.replace('_', ' ')}</td>
+                  <td style={{ padding: '0.5rem' }}>{exp.description}</td>
+                  <td style={{ padding: '0.5rem' }}>{exp.vendor_name || '—'}</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>
+                    {formatNaira(exp.amount)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -318,15 +574,15 @@ export default function ReportsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Total Invoiced</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-navy)' }}>{formatNaira(invoices.reduce((s, i) => s + i.total, 0))}</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-navy)' }}>{formatNaira(scopedInvoices.reduce((s, i) => s + i.total, 0))}</div>
             </div>
             <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Total Collected</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#15803d' }}>{formatNaira(payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0))}</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#15803d' }}>{formatNaira(scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0))}</div>
             </div>
             <div style={{ padding: '1rem', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Collection Rate</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b45309' }}>{invoices.length > 0 ? `${Math.round((payments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0) / invoices.reduce((s, i) => s + i.total, 0)) * 100)}%` : 'N/A'}</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b45309' }}>{scopedInvoices.length > 0 ? `${Math.round((scopedPayments.filter((p) => p.status === 'approved').reduce((s, p) => s + p.amount, 0) / scopedInvoices.reduce((s, i) => s + i.total, 0)) * 100)}%` : 'N/A'}</div>
             </div>
           </div>
         </div>
@@ -469,7 +725,10 @@ export default function ReportsPage() {
                       <button
                         className={styles.generateBtn}
                         style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', width: 'auto', flex: 'none' }}
-                        onClick={() => setViewReport(r.type as ReportView)}
+                        onClick={() => {
+                          setViewReport(r.type as ReportView);
+                          setViewReportItem(r);
+                        }}
                       >
                         View
                       </button>
@@ -528,8 +787,11 @@ export default function ReportsPage() {
 
       <Modal
         isOpen={viewReport !== null}
-        onClose={() => setViewReport(null)}
-        title="Report View"
+        onClose={() => {
+          setViewReport(null);
+          setViewReportItem(null);
+        }}
+        title={viewReportItem?.title || 'Report View'}
       >
         {viewReportData}
       </Modal>

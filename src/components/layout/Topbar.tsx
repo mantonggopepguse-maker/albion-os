@@ -69,6 +69,10 @@ export default function Topbar({ title }: { title?: string }) {
     router.push('/login');
   };
 
+  const roleDisplay = user.roles && user.roles.length > 1
+    ? user.roles.map((r) => getRoleLabel(r)).join(' · ')
+    : getRoleLabel(user.role);
+
   return (
     <header className={styles.topbar}>
 
@@ -98,7 +102,7 @@ export default function Topbar({ title }: { title?: string }) {
           </div>
           <div className={styles.userInfo}>
             <span className={styles.userName}>{user.full_name}</span>
-            <span className={styles.userRole}>{getRoleLabel(user.role)}</span>
+            <span className={styles.userRole} title={roleDisplay}>{roleDisplay}</span>
           </div>
           <button className={styles.logoutBtn} onClick={handleLogout} title="Logout">
             🚪

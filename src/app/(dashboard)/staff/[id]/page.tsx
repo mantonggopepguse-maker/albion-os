@@ -4,7 +4,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Topbar from '@/components/layout/Topbar';
 import Modal from '@/components/ui/Modal';
-import { useAuth, getRoleLabel } from '@/lib/auth-context';
+import Toast from '@/components/ui/Toast';
+import { useAuth, getRoleLabel, hasRole } from '@/lib/auth-context';
 import { useUsers, useLocations, findLocationById, useLeaveRequests } from '@/hooks/use-supabase-data';
 import {
   getSalaryForUser,
@@ -60,10 +61,12 @@ export default function StaffDetailPage() {
   const [leaveModal, setLeaveModal] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ leave_type: 'annual' as LeaveType, start_date: '', end_date: '', reason: '' });
   const [clockMsg, setClockMsg] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [confirmReview, setConfirmReview] = useState<{ id: string; status: 'approved' | 'rejected' } | null>(null);
 
   const staff = useMemo(() => users.find((u) => u.id === userId), [users, userId]);
   const location = staff?.location_id ? findLocationById(locations, staff.location_id) : null;
-  const isCeo = currentUser?.role === 'ceo' || currentUser?.role === 'super_admin';
+  const isCeo = hasRole(currentUser, 'ceo') || hasRole(currentUser, 'super_admin');
   const isOwnProfile = currentUser?.id === userId;
   const isReviewer = isCeo;
 
@@ -199,29 +202,37 @@ export default function StaffDetailPage() {
       setLeaveModal(false);
       setLeaveForm({ leave_type: 'annual', start_date: '', end_date: '', reason: '' });
       await refreshLeaveBalances();
+      setToast({ message: 'Leave request submitted successfully.', type: 'success' });
     } else {
-      alert(result.error || 'Failed to submit leave request');
+      setToast({ message: result.error || 'Failed to submit leave request', type: 'error' });
     }
   }
 
-  async function handleReviewApproval(lr: { id: string }) {
-    if (!confirm('Approve this leave request?')) return;
-    const result = await reviewLeaveRequest(lr.id, 'approved', 'Approved');
-    if (result.success) {
-      await refreshLeaveBalances();
-    } else {
-      alert(result.error || 'Failed to approve leave request');
-    }
+  function handleReviewApproval(lr: { id: string }) {
+    setConfirmReview({ id: lr.id, status: 'approved' });
   }
 
-  async function handleReviewRejection(lr: { id: string }) {
-    if (!confirm('Reject this leave request?')) return;
-    const result = await reviewLeaveRequest(lr.id, 'rejected', 'Rejected');
+  function handleReviewRejection(lr: { id: string }) {
+    setConfirmReview({ id: lr.id, status: 'rejected' });
+  }
+
+  async function executeLeaveReview() {
+    if (!confirmReview) return;
+    const { id, status } = confirmReview;
+    const result = await reviewLeaveRequest(id, status, status === 'approved' ? 'Approved' : 'Rejected');
     if (result.success) {
       await refreshLeaveBalances();
+      setToast({
+        message: `Leave request ${status} successfully.`,
+        type: 'success',
+      });
     } else {
-      alert(result.error || 'Failed to reject leave request');
+      setToast({
+        message: result.error || `Failed to ${status === 'approved' ? 'approve' : 'reject'} leave request`,
+        type: 'error',
+      });
     }
+    setConfirmReview(null);
   }
 
   return (
@@ -234,7 +245,9 @@ export default function StaffDetailPage() {
           <div className={styles.profileInfo}>
             <h1 className={styles.profileName}>{staff.full_name}</h1>
             <p className={styles.profileMeta}>
-              {getRoleLabel(staff.role)} &middot; {location ? location.name : 'All Locations'}
+              {staff.roles && staff.roles.length > 1
+                ? staff.roles.map((r) => getRoleLabel(r)).join(' · ')
+                : getRoleLabel(staff.role)} &middot; {location ? location.name : 'All Locations'}
             </p>
             <p className={styles.profileMeta}>{staff.email} &middot; {staff.phone || '—'}</p>
           </div>
@@ -674,6 +687,49 @@ export default function StaffDetailPage() {
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* ── Confirm Leave Review Modal ── */}
+      <Modal
+        isOpen={!!confirmReview}
+        onClose={() => setConfirmReview(null)}
+        title={confirmReview?.status === 'approved' ? 'Approve Leave Request' : 'Reject Leave Request'}
+      >
+        <div style={{ padding: '0.5rem 0' }}>
+          <p style={{ margin: '0 0 1.5rem', color: 'var(--color-slate)', lineHeight: 1.5 }}>
+            Are you sure you want to <strong>{confirmReview?.status}</strong> this leave request for {staff.full_name}?
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={() => setConfirmReview(null)}
+              style={{ padding: '0.5rem 1.25rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontSize: '0.875rem', fontWeight: 600, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', color: 'var(--color-slate)' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={executeLeaveReview}
+              style={{
+                padding: '0.5rem 1.25rem',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                background: confirmReview?.status === 'approved' ? '#15803d' : '#dc2626',
+                color: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              {confirmReview?.status === 'approved' ? 'Approve' : 'Reject'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {toast && (
+        <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
     </>
   );

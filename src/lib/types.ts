@@ -53,7 +53,10 @@ export type UserRole =
   | 'receptionist'
   | 'regional_manager'
   | 'security'
-  | 'lab_scientist';
+  | 'lab_scientist'
+  | 'pharmacist'
+  | 'support_staff';
+
 
 /* ============================================================
    User  →  Supabase table: `users`
@@ -76,8 +79,11 @@ export interface User {
   /** Full display name (e.g. "Dr. Emeka Moneke"). */
   full_name: string;
 
-  /** The user's assigned role. Determines navigation and data access. */
+  /** The user's assigned primary role. Determines navigation and data access. */
   role: UserRole;
+
+  /** Optional array of additional or concurrent roles for multi-role personnel. */
+  roles?: UserRole[];
 
   /** FK → `locations.id`. Nullable for super admins who see all locations. */
   location_id: string | null;
@@ -359,6 +365,9 @@ export interface Invoice {
   /** Current lifecycle status. */
   status: InvoiceStatus;
 
+  /** Total amount paid so far (₦). */
+  paid_amount?: number;
+
   /** ISO 8601 timestamp of invoice creation. */
   created_at: string;
 
@@ -602,11 +611,16 @@ export interface Payslip {
 export interface BranchExpense {
   id: string;
   location_id: string;
-  category: 'inventory_purchase' | 'utilities' | 'payroll' | 'maintenance' | 'rent' | 'equipment' | 'other';
+  location_name?: string;
+  category: 'inventory_purchase' | 'utilities' | 'payroll' | 'maintenance' | 'rent' | 'equipment' | 'fuel' | 'consumables' | 'other';
   amount: number;
   description: string;
   expense_date: string;
   recorded_by: string;
+  recorder_name?: string;
+  vendor_name?: string | null;
+  vendor?: string | null;
+  payment_method?: 'cash' | 'bank_transfer' | 'pos' | 'check';
   receipt_url?: string | null;
   created_at: string;
 }
@@ -718,11 +732,11 @@ export type Species = 'Dog' | 'Cat' | 'Bird' | 'Rabbit' | 'Fish' | 'Reptile' | '
 
 export type PetGender = 'Male' | 'Female';
 
-export type AppointmentStatus = 'scheduled' | 'checked_in' | 'in_progress' | 'completed' | 'cancelled' | 'no_show';
+export type AppointmentStatus = 'scheduled' | 'confirmed' | 'checked_in' | 'in_progress' | 'completed' | 'cancelled' | 'no_show';
 
-export type TreatmentStatus = 'ongoing' | 'completed' | 'cancelled';
+export type TreatmentStatus = 'ongoing' | 'completed' | 'cancelled' | 'referred';
 
-export type QueueStatus = 'waiting' | 'in_progress' | 'completed' | 'cancelled' | 'no_show';
+export type QueueStatus = 'waiting' | 'in_progress' | 'in_consultation' | 'completed' | 'cancelled' | 'no_show';
 
 export type QueuePriority = 'normal' | 'urgent' | 'emergency';
 
@@ -755,8 +769,12 @@ export interface Appointment {
   vet_id: string | null;
   location_id: string | null;
   procedure_type: string | null;
+  /** Alias for procedure_type */
+  service_type?: string | null;
   date: string;
   time: string;
+  /** Alias for time */
+  start_time?: string;
   duration_minutes: number;
   reason: string | null;
   status: AppointmentStatus;
@@ -768,7 +786,7 @@ export interface Appointment {
 export interface Treatment {
   id: string;
   patient_id: string;
-  vet_id: string;
+  vet_id: string | null;
   location_id: string | null;
   date: string;
   chief_complaint: string | null;
@@ -806,6 +824,10 @@ export interface PatientQueue {
   priority: QueuePriority;
   status: QueueStatus;
   reason: string | null;
+  /** Alias for reason */
+  reason_for_visit?: string | null;
+  /** Alias for priority */
+  triage_level?: QueuePriority;
   assigned_vet_id: string | null;
   called_at: string | null;
   completed_at: string | null;
@@ -820,6 +842,7 @@ export interface VetService {
   category: string;
   species: string;
   price: number;
+  duration_minutes?: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -854,6 +877,7 @@ export interface PatientRef {
   id: string;
   name: string;
   species: string;
+  weight_kg?: number | null;
 }
 
 /** `patients` row + optional `owner` join. */
@@ -878,6 +902,21 @@ export interface TreatmentWithRelations extends Treatment {
   patient?: PatientRef | null;
   vet?: ClinicOwner | null;
 }
+
+/** Authenticated user profile representation */
+export interface AuthUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  roles?: UserRole[];
+  location_id: string;
+  location_name: string;
+  avatar_url?: string | null;
+  phone: string;
+}
+
+
 
 export type StockMovementType =
   | 'allocation'
@@ -907,3 +946,252 @@ export interface StockMovementWithRelations extends StockMovement {
   from_location?: { name: string } | null;
   to_location?: { name: string } | null;
 }
+
+/* ============================================================
+   Clinical Specialty Modules Types
+   ============================================================ */
+
+/* ── Diagnostic Lab Hub ── */
+export type LabTestType =
+  | 'cbc'
+  | 'biochemistry'
+  | 'urinalysis'
+  | 'parasitology'
+  | 'pathology'
+  | 'complete_blood_count'
+  | 'fecal_analysis'
+  | 'cytology'
+  | 'rapid_snap_test'
+  | 'other';
+
+export type LabStatus =
+  | 'pending'
+  | 'sample_collected'
+  | 'collected'
+  | 'processing'
+  | 'ready'
+  | 'reviewed'
+  | 'rejected';
+
+export interface LabResultParameter {
+  name?: string;
+  parameter?: string;
+  value: number | string;
+  unit: string;
+  reference_range: string;
+  flag?: 'normal' | 'low' | 'high' | 'critical';
+  status?: 'normal' | 'low' | 'high' | 'critical';
+}
+
+export interface LabOrder {
+  id: string;
+  order_number: string;
+  patient_id: string;
+  patient_name?: string;
+  species?: string;
+  breed?: string;
+  owner_name?: string;
+  doctor_id?: string;
+  doctor_name?: string;
+  test_type: LabTestType;
+  status: LabStatus;
+  priority?: 'normal' | 'urgent';
+  notes?: string;
+  clinical_notes?: string;
+  location_id?: string;
+  results?: LabResultParameter[];
+  pathology_summary?: string;
+  collected_at: string;
+  completed_at?: string | null;
+  reviewed_by?: string | null;
+}
+
+/* ── Inpatient ICU & Hospitalization ── */
+export type WardType = 'general_ward' | 'icu' | 'isolation' | 'recovery' | 'post_op' | 'quarantine';
+export type HospitalizationStatus = 'active' | 'stable' | 'critical' | 'discharged' | 'admitted' | 'ready_for_discharge';
+
+export interface ICUVitalEntry {
+  id: string;
+  timestamp: string;
+  temperature_c: number;
+  heart_rate_bpm: number;
+  respiratory_rate_bpm: number;
+  crt_seconds?: number;
+  capillary_refill_sec?: number;
+  mucous_membranes: 'pink' | 'pale' | 'cyanotic' | 'icteric' | 'hyperemic' | string;
+  blood_pressure_sys?: number;
+  blood_pressure_dia?: number;
+  fluid_rate_ml_hr?: number;
+  pain_score?: number;
+  mental_status?: string;
+  notes?: string;
+  logged_by: string;
+}
+
+export interface HospitalizationRecord {
+  id: string;
+  patient_id: string;
+  patient_name?: string;
+  species?: string;
+  cage_number: string;
+  ward?: WardType;
+  ward_type?: WardType;
+  admission_date: string;
+  reason_for_admission?: string;
+  admitting_diagnosis?: string;
+  attending_vet_id?: string;
+  attending_vet_name?: string;
+  status: HospitalizationStatus;
+  weight_kg?: number;
+  fluid_rate_ml_hr?: number;
+  special_instructions?: string;
+  location_id?: string;
+  vitals: ICUVitalEntry[];
+  discharge_date?: string | null;
+  discharge_summary?: string | null;
+}
+
+/* ── Surgical Suite & Anesthesia ── */
+export type SurgeryStatus = 'scheduled' | 'pre_op' | 'in_surgery' | 'recovery' | 'completed' | 'cancelled';
+
+export interface SurgeryRecord {
+  id: string;
+  surgery_number: string;
+  patient_id: string;
+  patient_name?: string;
+  procedure_name: string;
+  primary_surgeon?: string;
+  surgeon_name?: string;
+  theater_room?: string;
+  anesthetist?: string;
+  anesthesia_protocol?: string;
+  status: SurgeryStatus;
+  scheduled_date: string;
+  pre_op_checklist?: {
+    fasting_confirmed?: boolean;
+    consent_signed?: boolean;
+    iv_catheter_placed?: boolean;
+    pre_medication_given?: boolean;
+  };
+  anesthesia_agent?: string;
+  duration_minutes?: number;
+  blood_loss_ml?: number;
+  surgical_notes?: string;
+  post_op_instructions?: string;
+  location_id?: string;
+}
+
+/* ── Cash Reconciliation ── */
+export type ReconciliationStatus = 'balanced' | 'discrepancy' | 'approved';
+
+export interface CashReconciliation {
+  id: string;
+  date?: string;
+  shift_date?: string;
+  shift_type?: 'morning' | 'evening' | 'full_day';
+  reconciled_by?: string;
+  cashier_id?: string;
+  location_id?: string;
+  cash_expected: number;
+  cash_actual: number;
+  pos_card_expected: number;
+  pos_card_actual: number;
+  bank_transfer_expected: number;
+  bank_transfer_actual: number;
+  total_expected: number;
+  total_actual: number;
+  variance: number;
+  status: ReconciliationStatus;
+  discrepancy_reason?: string;
+  approved_by?: string | null;
+  created_at: string;
+}
+
+/* ── Clinical Calculators ── */
+export interface DrugDoseResult {
+  weightKg: number;
+  doseMgKg: number;
+  totalDoseMg: number;
+  concentrationMgMl: number;
+  volumeMl: number;
+}
+
+export interface FluidRateResult {
+  weightKg: number;
+  maintenanceMlDay: number;
+  dehydrationDeficitMl: number;
+  ongoingLossesMlDay: number;
+  total24hMl: number;
+  hourlyRateMlHr: number;
+  dropsPerMinute: number;
+}
+
+/* ── Audit Log Vault ── */
+export type AuditCategory =
+  | 'financial'
+  | 'narcotics'
+  | 'inventory'
+  | 'security'
+  | 'clinical'
+  | 'system';
+
+export type AuditSeverity = 'info' | 'warning' | 'critical';
+
+export interface AuditLog {
+  id: string;
+  table_name: string;
+  record_id: string;
+  action: string;
+  actor_id: string;
+  actor_name?: string;
+  actor_role: string;
+  user_id?: string;
+  user_name?: string;
+  entity_type?: string;
+  entity_id?: string;
+  category: AuditCategory;
+  severity: AuditSeverity;
+  details: Record<string, any> | null;
+  ip_address?: string | null;
+  created_at: string;
+}
+
+/* ── Shift Timetable & Duty Roster ── */
+export type ShiftBlock = 'morning' | 'afternoon' | 'night' | 'on_call';
+
+export interface ClinicShift {
+  id: string;
+  user_id: string;
+  staff_name?: string;
+  role?: string;
+  location_id: string;
+  location_name?: string;
+  shift_date: string;
+  shift_block: ShiftBlock;
+  start_time: string;
+  end_time: string;
+  notes?: string | null;
+  created_at: string;
+}
+
+/* ── Preventive Care & Reminders ── */
+export type ReminderType = 'vaccination' | 'deworming' | 'suture_removal' | 'medication_refill' | 'wellness_check';
+export type ReminderStatus = 'pending' | 'sent' | 'completed' | 'cancelled';
+
+export interface PatientReminder {
+  id: string;
+  patient_id: string;
+  patient_name?: string;
+  owner_id?: string;
+  owner_name?: string;
+  owner_phone?: string;
+  species?: string;
+  reminder_type: ReminderType;
+  title: string;
+  due_date: string;
+  status: ReminderStatus;
+  notes?: string | null;
+  last_notified_at?: string | null;
+  created_at: string;
+}
+

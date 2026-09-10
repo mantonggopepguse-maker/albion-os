@@ -32,6 +32,9 @@ import type {
   LeaveType, DocumentType, TargetType, Supplier,
   PatientWithOwner, AppointmentWithRelations, PatientQueueWithRelations,
   TreatmentWithRelations, VetService, StockMovementWithRelations,
+  LabOrder, HospitalizationRecord, ICUVitalEntry, SurgeryRecord, CashReconciliation,
+  BranchExpense, AuditLog, AuditCategory,
+  ClinicShift, PatientReminder, ReminderStatus,
 } from '@/lib/types';
 import { transitionInvoice as dataTransitionInvoice } from '@/lib/data-service';
 import {
@@ -51,6 +54,10 @@ import {
   MOCK_PERFORMANCE_TARGETS,
   MOCK_PERFORMANCE_REVIEWS,
   MOCK_SUPPLIERS,
+  MOCK_LAB_ORDERS,
+  MOCK_HOSPITALIZATIONS,
+  MOCK_SURGERIES,
+  MOCK_CASH_RECONCILIATIONS,
 } from '@/lib/mock-data';
 
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
@@ -1486,3 +1493,197 @@ export function useSuppliers() {
 
   return { suppliers, loading, refetch, addSupplier, updateSupplier, deleteSupplier };
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   DIAGNOSTIC LAB ORDERS
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useLabOrders() {
+  const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const { getLabOrders } = await import('@/lib/data-service');
+    const data = await getLabOrders();
+    setLabOrders(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { labOrders, loading, refetch };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HOSPITALIZATIONS & ICU
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useHospitalizations() {
+  const [hospitalizations, setHospitalizations] = useState<HospitalizationRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const { getHospitalizations } = await import('@/lib/data-service');
+    const data = await getHospitalizations();
+    setHospitalizations(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { hospitalizations, loading, refetch };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SURGERIES
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useSurgeries() {
+  const [surgeries, setSurgeries] = useState<SurgeryRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const { getSurgeries } = await import('@/lib/data-service');
+    const data = await getSurgeries();
+    setSurgeries(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { surgeries, loading, refetch };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CASH RECONCILIATIONS
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useCashReconciliations() {
+  const [reconciliations, setReconciliations] = useState<CashReconciliation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const { getCashReconciliations } = await import('@/lib/data-service');
+    const data = await getCashReconciliations();
+    setReconciliations(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { reconciliations, loading, refetch };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ENTERPRISE AUDIT LOG VAULT
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useAuditLogs(filter?: { category?: AuditCategory; search?: string }) {
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const { getAuditLogs } = await import('@/lib/data-service');
+    const data = await getAuditLogs(filter);
+    setAuditLogs(data);
+    setLoading(false);
+  }, [filter?.category, filter?.search]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { auditLogs, loading, refetch };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   OPERATING EXPENSES
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useExpenses(locationId?: string) {
+  const [expenses, setExpenses] = useState<BranchExpense[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const { getBranchExpenses } = await import('@/lib/data-service');
+    const data = await getBranchExpenses(locationId);
+    setExpenses(data);
+    setLoading(false);
+  }, [locationId]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { expenses, loading, refetch };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CLINIC SHIFTS & DUTY ROSTER
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useClinicShifts(locationId?: string) {
+  const [shifts, setShifts] = useState<ClinicShift[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const { getClinicShifts } = await import('@/lib/data-service');
+    const data = await getClinicShifts(locationId);
+    setShifts(data);
+    setLoading(false);
+  }, [locationId]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { shifts, loading, refetch };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PREVENTIVE CARE & PATIENT RECALLS
+   ═══════════════════════════════════════════════════════════════ */
+
+export function usePatientReminders(status?: ReminderStatus) {
+  const [reminders, setReminders] = useState<PatientReminder[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const { getPatientReminders } = await import('@/lib/data-service');
+    const data = await getPatientReminders(status);
+    setReminders(data);
+    setLoading(false);
+  }, [status]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { reminders, loading, refetch };
+}
+
+

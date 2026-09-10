@@ -66,7 +66,11 @@ export default function Sidebar() {
      (defined in @/lib/navigation.ts) to only include items whose
      `roles` array contains the current user's role.
      e.g., a 'sales_rep' won't see the 'Users' admin page. */
-  const navItems = getNavItemsForRole(user.role);
+  const navItems = getNavItemsForRole(user.role, user.roles);
+
+  const roleDisplay = user.roles && user.roles.length > 1
+    ? user.roles.map((r) => getRoleLabel(r)).join(' · ')
+    : getRoleLabel(user.role);
 
   /* ── User initials generation ──
      Takes the full name (e.g., "Dr. Emeka Moneke"), splits on spaces,
@@ -140,7 +144,7 @@ export default function Sidebar() {
         </div>
         <div className={styles.userInfo}>
           <span className={styles.userName}>{user.full_name}</span>
-          <span className={styles.userRole}>{getRoleLabel(user.role)}</span>
+          <span className={styles.userRole} title={roleDisplay}>{roleDisplay}</span>
         </div>
       </div>
     </aside>

@@ -226,6 +226,41 @@
   color: #8b6914;
 }
 
+.badgePurple {
+  background-color: rgba(139, 92, 246, 0.15);
+  color: #7c3aed;
+}
+
+.badgeTeal {
+  background-color: rgba(15, 118, 110, 0.15);
+  color: #0f766e;
+}
+
+.badgeOrange {
+  background-color: rgba(249, 115, 22, 0.15);
+  color: #ea580c;
+}
+
+.badgePink {
+  background-color: rgba(236, 72, 153, 0.15);
+  color: #db2777;
+}
+
+.badgeIndigo {
+  background-color: rgba(99, 102, 241, 0.15);
+  color: #4f46e5;
+}
+
+.badgeGray {
+  background-color: rgba(100, 116, 139, 0.15);
+  color: #475569;
+}
+
+.badgeBlue {
+  background-color: rgba(37, 99, 235, 0.15);
+  color: #1d4ed8;
+}
+
 /* ── Location ── */
 .locationText {
   font-size: var(--text-sm);

@@ -4,8 +4,8 @@ import { useState, useMemo } from 'react';
 import Topbar from '@/components/layout/Topbar';
 import Modal from '@/components/ui/Modal';
 import Toast from '@/components/ui/Toast';
-import { useProducts, useLocations, useSuppliers } from '@/hooks/use-supabase-data';
-import { MOCK_INVENTORY } from '@/lib/mock-data';
+import { useProducts, useLocations, useSuppliers, useInventory } from '@/hooks/use-supabase-data';
+import { receiveSupplierStock } from '@/lib/data-service';
 import { useAuth } from '@/lib/auth-context';
 import type { Supplier } from '@/lib/types';
 import styles from './suppliers.module.css';
@@ -116,9 +116,11 @@ export default function SuppliersPage() {
   const [receiveSupplier, setReceiveSupplier] = useState<Supplier | null>(null);
   const [receiveForm, setReceiveForm] = useState({ product_id: '', quantity: 0, location_id: '' });
   const [receiving, setReceiving] = useState(false);
+  const [deleteConfirmSupplier, setDeleteConfirmSupplier] = useState<Supplier | null>(null);
 
   const { products } = useProducts();
   const { locations } = useLocations();
+  const { refetch: refetchInventory } = useInventory();
 
   /* ── Search filter ── */
 
@@ -185,16 +187,19 @@ export default function SuppliersPage() {
     }
   }
 
-  async function handleDelete(supplier: Supplier) {
-    const confirmed = window.confirm(`Delete supplier "${supplier.name}"? This will mark them as inactive.`);
-    if (!confirmed) return;
+  function handleDelete(supplier: Supplier) {
+    setDeleteConfirmSupplier(supplier);
+  }
 
-    const res = await deleteSupplier(supplier.id);
+  async function handleConfirmDelete() {
+    if (!deleteConfirmSupplier) return;
+    const res = await deleteSupplier(deleteConfirmSupplier.id);
     if (!res.success) {
       setToast({ message: res.error || 'Failed to deactivate supplier', type: 'error' });
     } else {
-      setToast({ message: `"${supplier.name}" deactivated.`, type: 'info' });
+      setToast({ message: `"${deleteConfirmSupplier.name}" deactivated.`, type: 'info' });
     }
+    setDeleteConfirmSupplier(null);
   }
 
   async function handleReceiveSubmit(e: React.FormEvent) {
@@ -206,31 +211,25 @@ export default function SuppliersPage() {
 
     setReceiving(true);
 
-    const existingIndex = MOCK_INVENTORY.findIndex(
-      (i) => i.product_id === receiveForm.product_id && i.location_id === receiveForm.location_id
-    );
-    if (existingIndex !== -1) {
-      MOCK_INVENTORY[existingIndex].quantity += receiveForm.quantity;
-      MOCK_INVENTORY[existingIndex].status =
-        MOCK_INVENTORY[existingIndex].quantity === 0 ? 'out_of_stock' : MOCK_INVENTORY[existingIndex].quantity <= 50 ? 'low_stock' : 'in_stock';
-    } else {
-      MOCK_INVENTORY.push({
-        id: `inv-${Date.now()}`,
-        product_id: receiveForm.product_id,
-        location_id: receiveForm.location_id,
-        quantity: receiveForm.quantity,
-        batch_number: `BATCH-${Date.now().toString().slice(-4)}`,
-        expiry_date: '',
-        status: receiveForm.quantity <= 50 ? 'low_stock' : 'in_stock',
-      });
-    }
-
-    setToast({
-      message: `Received ${receiveForm.quantity} units from "${receiveSupplier.name}".`,
-      type: 'success',
+    const res = await receiveSupplierStock({
+      supplier_id: receiveSupplier.id,
+      supplier_name: receiveSupplier.name,
+      product_id: receiveForm.product_id,
+      location_id: receiveForm.location_id,
+      quantity: receiveForm.quantity,
     });
-    setReceiveSupplier(null);
-    setReceiveForm({ product_id: '', quantity: 0, location_id: '' });
+
+    if (!res.success) {
+      setToast({ message: res.error || 'Failed to receive stock', type: 'error' });
+    } else {
+      await refetchInventory();
+      setToast({
+        message: `Received ${receiveForm.quantity} units from "${receiveSupplier.name}".`,
+        type: 'success',
+      });
+      setReceiveSupplier(null);
+      setReceiveForm({ product_id: '', quantity: 0, location_id: '' });
+    }
     setReceiving(false);
   }
 
@@ -504,6 +503,36 @@ export default function SuppliersPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* ── Confirm Deactivate Modal ── */}
+      <Modal
+        isOpen={!!deleteConfirmSupplier}
+        onClose={() => setDeleteConfirmSupplier(null)}
+        title="Deactivate Supplier"
+      >
+        <div style={{ padding: '0.5rem 0' }}>
+          <p style={{ margin: '0 0 1.5rem', color: 'var(--color-slate)', lineHeight: 1.5 }}>
+            Are you sure you want to deactivate supplier <strong>{deleteConfirmSupplier?.name}</strong>? This will mark them as inactive.
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              className={styles.cancelBtn}
+              onClick={() => setDeleteConfirmSupplier(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={styles.submitBtn}
+              style={{ background: '#dc2626' }}
+              onClick={handleConfirmDelete}
+            >
+              Deactivate
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {toast && (
