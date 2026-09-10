@@ -17,6 +17,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { isSupabaseMockMode, isSupabaseConfigured } from '@/lib/supabase/config';
 import type { UserRole } from '@/lib/types';
 import type { AuthChangeEvent, Session, Subscription } from '@supabase/supabase-js';
 
@@ -275,7 +276,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasRecoverySession, setHasRecoverySession] = useState(false);
 
-  const IS_MOCK_MODE = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
+  const IS_MOCK_MODE = isSupabaseMockMode() || !isSupabaseConfigured();
 
   /* ── Restore session on mount + listen for auth changes ── */
   useEffect(() => {
@@ -451,13 +452,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [IS_MOCK_MODE]);
 
+  /* ── 1-Click Instant Demo Login ── */
+  const loginAsDemo = useCallback(async (profile: DemoProfile) => {
+    setIsLoading(true);
+    const demoUser: AuthUser = {
+      id: profile.id || `mock-${profile.role}`,
+      email: profile.email,
+      full_name: profile.name,
+      role: profile.role,
+      roles: profile.roles || [profile.role],
+      location_id: profile.location_id,
+      location_name: profile.location_name,
+      avatar_url: null,
+      phone: '+234 800 123 4567',
+    };
+
+    try {
+      localStorage.setItem('albion_os_user', JSON.stringify(demoUser));
+    } catch {
+      // Ignore localStorage error
+    }
+
+    setUser(demoUser);
+    setIsLoading(false);
+    return { success: true };
+  }, []);
+
   /* ── Login ── */
   const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true);
 
     if (IS_MOCK_MODE) {
+      const cleanEmail = email.trim().toLowerCase();
+      const demoMatch = DEMO_PROFILES.find((p) => {
+        const pEmail = p.email.toLowerCase();
+        return (
+          pEmail === cleanEmail ||
+          pEmail.split('@')[0] === cleanEmail.split('@')[0] ||
+          (cleanEmail.includes('superadmin') && p.role === 'super_admin') ||
+          (cleanEmail.includes('clinicadmin') && p.role === 'clinic_admin')
+        );
+      });
+
+      if (demoMatch) {
+        return loginAsDemo(demoMatch);
+      }
+
       const mockMatch = QUICK_LOGIN_USERS.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase()
+        (u) => u.email.toLowerCase() === cleanEmail
       );
 
       const mockUser: AuthUser = {
@@ -465,7 +507,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: mockMatch ? mockMatch.email : email,
         full_name: mockMatch ? mockMatch.label : email.split('@')[0],
         role: (mockMatch?.role as UserRole) || 'super_admin',
-        location_id: 'loc-1',
+        roles: mockMatch ? [mockMatch.role as UserRole] : ['super_admin'],
+        location_id: 'loc-0001-onitsha-hq',
         location_name: 'Lagos Headquarters',
         avatar_url: null,
         phone: '+234 800 123 4567',
@@ -498,15 +541,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     /* Fallback if Supabase call fails — check demo profiles */
     if (ENABLE_DEMO_LOGIN) {
-      const demoMatch = DEMO_PROFILES.find(
-        (p) => p.email.toLowerCase() === email.toLowerCase()
-      );
+      const cleanEmail = email.trim().toLowerCase();
+      const demoMatch = DEMO_PROFILES.find((p) => {
+        const pEmail = p.email.toLowerCase();
+        return (
+          pEmail === cleanEmail ||
+          pEmail.split('@')[0] === cleanEmail.split('@')[0] ||
+          (cleanEmail.includes('superadmin') && p.role === 'super_admin') ||
+          (cleanEmail.includes('clinicadmin') && p.role === 'clinic_admin')
+        );
+      });
       if (demoMatch) {
         return loginAsDemo(demoMatch);
       }
 
       const mockMatch = QUICK_LOGIN_USERS.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase()
+        (u) => u.email.toLowerCase() === cleanEmail
       );
 
       const fallbackUser: AuthUser = {
@@ -514,7 +564,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: mockMatch ? mockMatch.email : email,
         full_name: mockMatch ? mockMatch.label : email.split('@')[0],
         role: (mockMatch?.role as UserRole) || 'super_admin',
-        location_id: 'loc-1',
+        roles: mockMatch ? [mockMatch.role as UserRole] : ['super_admin'],
+        location_id: 'loc-0001-onitsha-hq',
         location_name: 'Lagos Headquarters',
         avatar_url: null,
         phone: '+234 800 123 4567',
@@ -528,33 +579,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setIsLoading(false);
     return { success: false, error: 'Unable to sign in. Please try again.' };
-  }, [IS_MOCK_MODE]);
-
-  /* ── 1-Click Instant Demo Login ── */
-  const loginAsDemo = useCallback(async (profile: DemoProfile) => {
-    setIsLoading(true);
-    const demoUser: AuthUser = {
-      id: profile.id || `mock-${profile.role}`,
-      email: profile.email,
-      full_name: profile.name,
-      role: profile.role,
-      roles: profile.roles || [profile.role],
-      location_id: profile.location_id,
-      location_name: profile.location_name,
-      avatar_url: null,
-      phone: '+234 800 123 4567',
-    };
-
-    try {
-      localStorage.setItem('albion_os_user', JSON.stringify(demoUser));
-    } catch {
-      // Ignore localStorage error
-    }
-
-    setUser(demoUser);
-    setIsLoading(false);
-    return { success: true };
-  }, []);
+  }, [IS_MOCK_MODE, loginAsDemo]);
 
   /* ── Logout ── */
   const logout = useCallback(async () => {

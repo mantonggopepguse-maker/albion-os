@@ -18,6 +18,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { isSupabaseMockMode, isSupabaseConfigured } from '@/lib/supabase/config';
 import type {
   SupabaseClient,
   RealtimePostgresInsertPayload,
@@ -60,7 +61,7 @@ import {
   MOCK_CASH_RECONCILIATIONS,
 } from '@/lib/mock-data';
 
-const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
+const USE_MOCK_DATA = isSupabaseMockMode() || !isSupabaseConfigured();
 
 /* ── Supabase client singleton for this module ── */
 function getSupabase(): SupabaseClient {

@@ -9,10 +9,10 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
-import { getSupabaseConfig, isSupabaseMockMode } from '@/lib/supabase/config';
+import { getSupabaseConfig, isSupabaseMockMode, isSupabaseConfigured } from '@/lib/supabase/config';
 
 export async function proxy(request: NextRequest) {
-  if (isSupabaseMockMode()) {
+  if (isSupabaseMockMode() || !isSupabaseConfigured()) {
     return NextResponse.next();
   }
 

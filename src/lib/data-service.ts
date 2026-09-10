@@ -23,6 +23,7 @@
  */
 
 import { createClient } from '@/lib/supabase/client';
+import { isSupabaseMockMode, isSupabaseConfigured } from '@/lib/supabase/config';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   Customer,
@@ -116,7 +117,7 @@ import {
   findProductById,
 } from '@/lib/mock-data';
 
-const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
+const USE_MOCK_DATA = isSupabaseMockMode() || !isSupabaseConfigured();
 
 function getSupabase(): SupabaseClient {
   return createClient();

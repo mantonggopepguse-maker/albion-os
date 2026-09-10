@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getSupabaseConfig, isSupabaseMockMode } from '@/lib/supabase/config';
+import { getSupabaseConfig, isSupabaseMockMode, isSupabaseConfigured } from '@/lib/supabase/config';
 
 describe('Supabase runtime configuration', () => {
   afterEach(() => {
@@ -27,5 +27,15 @@ describe('Supabase runtime configuration', () => {
       url: 'https://example.supabase.co',
       anonKey: 'public-anon-key',
     });
+  });
+
+  it('identifies unresolvable or expired Supabase project domains', () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://knabfxzouliunawxirdh.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'some-key');
+    expect(isSupabaseConfigured()).toBe(false);
+
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://valid-project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'some-key');
+    expect(isSupabaseConfigured()).toBe(true);
   });
 });

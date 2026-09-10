@@ -137,17 +137,21 @@ function LoginForm() {
   }, [searchParams]);
 
   /* ── Clinic handoff redirect helper ── */
-  const getClinicBaseUrl = () => {
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      return 'http://localhost:5173';
-    }
-    return 'https://albionpetclinic-180033031286.us-central1.run.app';
-  };
-
   const handleClinicHandoff = (demo: typeof CLINIC_DEMO_USERS[0]) => {
-    setIsSubmitting(true);
-    const baseUrl = getClinicBaseUrl();
-    window.location.href = `${baseUrl}/?demo_role=${encodeURIComponent(demo.systemRole)}`;
+    const matchedProfile = DEMO_PROFILES.find((p) => {
+      const emailMatch = p.email.toLowerCase().includes(demo.systemRole.toLowerCase()) ||
+                         p.role.toLowerCase() === demo.systemRole.toLowerCase();
+      const roleMatch = p.roleTitle.toLowerCase().includes(demo.role.toLowerCase()) ||
+                        p.name.toLowerCase() === demo.name.toLowerCase();
+      return emailMatch || roleMatch;
+    });
+
+    if (matchedProfile) {
+      handleDemoLogin(matchedProfile);
+    } else {
+      const fallback = DEMO_PROFILES.find((p) => p.role === 'clinic_admin') || DEMO_PROFILES[0];
+      handleDemoLogin(fallback);
+    }
   };
 
   /* ── Form Handlers ── */

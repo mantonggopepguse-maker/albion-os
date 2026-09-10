@@ -27,7 +27,7 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { getSupabaseConfig, isSupabaseMockMode } from './config';
+import { getSupabaseConfig, isSupabaseMockMode, isSupabaseConfigured } from './config';
 
 type QueryResult = { data: null; error: Error };
 type Chainable = {
@@ -58,7 +58,7 @@ type Chainable = {
 let browserClient: SupabaseClient | null = null;
 
 export function createClient(): SupabaseClient {
-  if (!isSupabaseMockMode()) {
+  if (!isSupabaseMockMode() && isSupabaseConfigured()) {
     if (!browserClient) {
       const { url, anonKey } = getSupabaseConfig();
       browserClient = createBrowserClient(url, anonKey);
