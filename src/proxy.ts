@@ -12,6 +12,10 @@ import { updateSession } from '@/lib/supabase/middleware';
 import { getSupabaseConfig, isSupabaseMockMode, isSupabaseConfigured } from '@/lib/supabase/config';
 
 export async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname === '/') {
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
   if (isSupabaseMockMode() || !isSupabaseConfigured()) {
     return NextResponse.next();
   }

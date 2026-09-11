@@ -118,9 +118,16 @@ function LoginForm() {
   const [workspaceTab, setWorkspaceTab] = useState<'PHARMA' | 'CLINIC'>('PHARMA');
 
   /* ── Auth context & router ── */
-  const { login, loginAsDemo } = useAuth();
+  const { user, login, loginAsDemo } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  /* ── Auto-redirect if already authenticated ── */
+  useEffect(() => {
+    if (user && !searchParams.get('logout')) {
+      router.replace('/dashboard');
+    }
+  }, [user, router, searchParams]);
 
   /* ── Auto-login on incoming ?demo_role=... ── */
   useEffect(() => {
