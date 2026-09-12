@@ -359,8 +359,20 @@ export interface Invoice {
   /** VAT amount (₦). Currently 7.5% in Nigeria. */
   vat: number;
 
-  /** Grand total (₦): `subtotal + vat`. */
+  /** Grand total (₦): `subtotal + vat - (discount_amount || 0)`. */
   total: number;
+
+  /** Custom VAT percentage (e.g. 7.5, or 0 for exempt). */
+  vat_rate?: number;
+
+  /** Discount type applied ('percent' | 'fixed'). */
+  discount_type?: 'percent' | 'fixed';
+
+  /** Discount value (e.g. 5 for 5% or 5000 for ₦5,000). */
+  discount_value?: number;
+
+  /** Total discount deducted in ₦. */
+  discount_amount?: number;
 
   /** Current lifecycle status. */
   status: InvoiceStatus;
@@ -835,6 +847,14 @@ export interface PatientQueue {
   updated_at: string;
 }
 
+export interface ProcedureMedicationProtocol {
+  drug_name: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  is_alternative?: boolean;
+}
+
 export interface VetService {
   id: string;
   name: string;
@@ -843,6 +863,8 @@ export interface VetService {
   species: string;
   price: number;
   duration_minutes?: number;
+  medication_protocol?: ProcedureMedicationProtocol[];
+  post_op_notes?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -1194,4 +1216,63 @@ export interface PatientReminder {
   last_notified_at?: string | null;
   created_at: string;
 }
+
+/* ── Staff Requests Portal ── */
+export type StaffRequestType = 'leave' | 'transfer' | 'restock' | 'return' | 'general';
+export type StaffRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export interface StaffRequest {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_role: UserRole;
+  location_id?: string | null;
+  location_name?: string | null;
+  type: StaffRequestType;
+  title: string;
+  details: {
+    // Leave
+    leave_type?: 'annual' | 'sick' | 'casual' | 'exam' | 'maternity';
+    start_date?: string;
+    end_date?: string;
+    // Transfer
+    target_location_id?: string;
+    target_location_name?: string;
+    // Restock & Return
+    product_id?: string;
+    product_name?: string;
+    batch_number?: string;
+    quantity?: number;
+    urgency?: 'low' | 'normal' | 'urgent';
+    return_condition?: 'excess' | 'damaged' | 'near_expiry';
+    // General / Reason
+    reason: string;
+    notes?: string;
+  };
+  status: StaffRequestStatus;
+  reviewed_by?: string | null;
+  reviewer_name?: string | null;
+  reviewed_at?: string | null;
+  review_notes?: string | null;
+  created_at: string;
+}
+
+/* ── Company & Clinic Announcements ── */
+export type AnnouncementScope = 'all' | 'clinic';
+export type AnnouncementPriority = 'normal' | 'urgent';
+
+export interface Announcement {
+  id: string;
+  title: string;
+  message: string;
+  scope: AnnouncementScope;
+  location_id?: string | null;
+  location_name?: string | null;
+  author_id: string;
+  author_name: string;
+  author_role: UserRole;
+  priority: AnnouncementPriority;
+  created_at: string;
+}
+
 

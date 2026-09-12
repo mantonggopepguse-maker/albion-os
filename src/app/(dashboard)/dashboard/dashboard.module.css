@@ -304,16 +304,19 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-5) var(--space-4);
-  background: rgba(255, 255, 255, 0.45);
-  border: 1.5px solid rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
   border-radius: var(--radius-xl);
   cursor: pointer;
-  transition: all var(--transition-base);
+  text-decoration: none;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.15s ease, border-color 0.15s ease;
   font-family: inherit;
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--color-slate);
   box-shadow: var(--shadow-neumorphic-button); /* Raised neomorphic state */
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .actionBtn:hover {
@@ -321,21 +324,25 @@
   background: var(--color-gold-light);
   color: var(--color-gold-dark);
   transform: translateY(-2px); /* Gentle hover lift */
-  box-shadow: var(--shadow-neumorphic-out-sm), 0 4px 12px rgba(223, 186, 107, 0.1);
+  box-shadow: var(--shadow-neumorphic-out-sm), 0 6px 16px rgba(223, 186, 107, 0.15);
 }
 
 .actionBtn:active {
-  transform: translateY(1px); /* Pushed state */
+  transform: scale(0.96) translateY(1px); /* Pushed tactile state */
   box-shadow: var(--shadow-neumorphic-in-sm); /* Sunken neomorphic state */
 }
 
 .actionIcon {
   font-size: 28px;
-  transition: transform var(--transition-fast);
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .actionBtn:hover .actionIcon {
-  transform: scale(1.1); /* Micro-interaction scale */
+  transform: scale(1.12); /* Micro-interaction scale */
+}
+
+.actionBtn:active .actionIcon {
+  transform: scale(0.95);
 }
 
 /* Invoice List */
@@ -352,17 +359,27 @@
   align-items: center;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.65);
   box-shadow: var(--shadow-neumorphic-out-sm);
-  transition: all var(--transition-base);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .invoiceItem:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-neumorphic-button);
-  background: rgba(255, 255, 255, 0.45);
-  border-color: rgba(223, 186, 107, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(223, 186, 107, 0.4);
+}
+
+.invoiceItem:active {
+  transform: scale(0.985);
+  box-shadow: var(--shadow-neumorphic-in-sm);
 }
 
 .invoiceId {
@@ -794,8 +811,28 @@
 }
 
 @media (max-width: 640px) {
+  .page {
+    padding: 0.75rem 0.65rem;
+  }
+
+  .bentoHero {
+    padding: 1rem 0.85rem;
+    border-radius: 1.25rem;
+  }
+
   .statsGridSix {
     grid-template-columns: repeat(2, 1fr);
     gap: 0.65rem;
+  }
+
+  .card {
+    padding: 1rem 0.85rem;
+    border-radius: 1.25rem;
+  }
+
+  .tableWrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
   }
 }

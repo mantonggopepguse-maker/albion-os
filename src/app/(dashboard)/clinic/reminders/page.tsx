@@ -21,7 +21,7 @@ export default function PatientRemindersPage() {
   const [formPatientId, setFormPatientId] = useState('');
   const [formType, setFormType] = useState<ReminderType>('vaccination');
   const [formTitle, setFormTitle] = useState('');
-  const [formDueDate, setFormDueDate] = useState(
+  const [formDueDate, setFormDueDate] = useState(() =>
     new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
   const [formNotes, setFormNotes] = useState('');

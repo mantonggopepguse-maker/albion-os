@@ -203,13 +203,9 @@
   text-overflow: ellipsis;
 }
 
-/* Mobile responsive */
+/* Mobile responsive: hide desktop sidebar completely on mobile screens */
 @media (max-width: 768px) {
   .sidebar {
-    transform: translateX(-100%);
-  }
-
-  .sidebar.open {
-    transform: translateX(0);
+    display: none !important;
   }
 }

@@ -59,6 +59,7 @@ import type {
   TreatmentMedication,
   PatientQueue,
   VetService,
+  ProcedureMedicationProtocol,
   CustomPayrollAdjustment,
   BranchExpense,
   BranchFinancialInsights,
@@ -80,6 +81,12 @@ import type {
   PatientReminder,
   ReminderType,
   ReminderStatus,
+  StaffRequest,
+  StaffRequestType,
+  StaffRequestStatus,
+  Announcement,
+  AnnouncementScope,
+  AnnouncementPriority,
 } from '@/lib/types';
 
 import {
@@ -114,6 +121,8 @@ import {
   MOCK_EXPENSES,
   MOCK_SHIFTS,
   MOCK_REMINDERS,
+  MOCK_STAFF_REQUESTS,
+  MOCK_ANNOUNCEMENTS,
   findProductById,
 } from '@/lib/mock-data';
 
@@ -307,6 +316,9 @@ export interface CreateInvoiceInput {
   location_id: string;
   items: InvoiceLineInput[];
   due_date: string;
+  vat_rate?: number;
+  discount_type?: 'percent' | 'fixed';
+  discount_value?: number;
 }
 
 /** Creates a new invoice with auto-calculated totals */
@@ -331,8 +343,18 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<ServiceR
   }
 
   const subtotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
-  const vat = Math.round(subtotal * 0.075);
-  const total = subtotal + vat;
+
+  let discountAmount = 0;
+  if (input.discount_type === 'percent' && input.discount_value) {
+    discountAmount = Math.round((subtotal * Math.min(100, Math.max(0, input.discount_value))) / 100);
+  } else if (input.discount_type === 'fixed' && input.discount_value) {
+    discountAmount = Math.min(input.discount_value, subtotal);
+  }
+
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
+  const vatRate = input.vat_rate !== undefined ? input.vat_rate : 7.5;
+  const vat = Math.round((taxableAmount * vatRate) / 100);
+  const total = taxableAmount + vat;
 
   const invoiceNumber = generateInvoiceNumber();
 
@@ -361,6 +383,10 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<ServiceR
     subtotal,
     vat,
     total,
+    vat_rate: vatRate,
+    discount_type: input.discount_type,
+    discount_value: input.discount_value,
+    discount_amount: discountAmount,
     status: 'draft',
     created_at: new Date().toISOString(),
     due_date: input.due_date,
@@ -2186,6 +2212,8 @@ export async function createVetService(input: {
   species: string;
   price: number;
   duration_minutes?: number;
+  medication_protocol?: ProcedureMedicationProtocol[];
+  post_op_notes?: string;
 }): Promise<ServiceResponse<VetService>> {
   if (!input.name.trim()) return { success: false, error: 'Service name is required' };
   if (!input.price || input.price < 0) return { success: false, error: 'Valid price is required' };
@@ -2198,6 +2226,8 @@ export async function createVetService(input: {
     species: input.species || 'All',
     price: input.price,
     duration_minutes: input.duration_minutes || 30,
+    medication_protocol: input.medication_protocol || [],
+    post_op_notes: input.post_op_notes || undefined,
     is_active: true,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -2381,6 +2411,7 @@ export interface AddBranchExpenseInput {
   description: string;
   expense_date?: string;
   recorded_by?: string;
+  recorder_name?: string;
   vendor_name?: string | null;
   vendor?: string | null;
   payment_method?: 'cash' | 'bank_transfer' | 'pos' | 'check';
@@ -2415,6 +2446,14 @@ export async function addBranchExpense(input: AddBranchExpenseInput): Promise<Se
 
   const expenseDate = input.expense_date || new Date().toISOString().slice(0, 10);
   const vendorVal = input.vendor_name || input.vendor || null;
+
+  // Resolve recorder name from input or users list if available
+  let recName = input.recorder_name;
+  if (!recName && input.recorded_by) {
+    const foundUser = MOCK_USERS.find((u) => u.id === input.recorded_by);
+    if (foundUser) recName = `${foundUser.full_name} (${foundUser.role.replace('_', ' ')})`;
+  }
+
   const newExpense: BranchExpense = {
     id: `exp-${Date.now()}`,
     location_id: input.location_id,
@@ -2423,6 +2462,7 @@ export async function addBranchExpense(input: AddBranchExpenseInput): Promise<Se
     description: input.description.trim(),
     expense_date: expenseDate,
     recorded_by: input.recorded_by || 'System',
+    recorder_name: recName || 'Staff Member',
     vendor_name: vendorVal,
     vendor: vendorVal,
     payment_method: input.payment_method || 'bank_transfer',
@@ -3062,3 +3102,287 @@ export function calculateFluidRate(
     dropsPerMinute,
   };
 }
+
+/* ============================================================
+   26. STAFF REQUESTS PORTAL
+   ============================================================ */
+export async function getStaffRequests(userId?: string, userRole?: UserRole): Promise<StaffRequest[]> {
+  if (USE_MOCK_DATA) {
+    let list = [...MOCK_STAFF_REQUESTS];
+    const isManager = ['super_admin', 'ceo', 'inventory_manager', 'clinic_admin', 'finance_manager'].includes(userRole || '');
+    if (!isManager && userId) {
+      list = list.filter((r) => r.user_id === userId);
+    }
+    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  const supabase = getSupabase();
+  let query = supabase.from('staff_requests').select('*').order('created_at', { ascending: false });
+  const isManager = ['super_admin', 'ceo', 'inventory_manager', 'clinic_admin', 'finance_manager'].includes(userRole || '');
+  if (!isManager && userId) {
+    query = query.eq('user_id', userId);
+  }
+  const { data, error } = await query;
+  if (!error && data) return data as StaffRequest[];
+  return [...MOCK_STAFF_REQUESTS];
+}
+
+export interface CreateStaffRequestInput {
+  user_id: string;
+  user_name: string;
+  user_role: UserRole;
+  location_id?: string | null;
+  location_name?: string | null;
+  type: StaffRequestType;
+  title: string;
+  details: StaffRequest['details'];
+}
+
+export async function createStaffRequest(input: CreateStaffRequestInput): Promise<ServiceResponse<StaffRequest>> {
+  if (!input.title.trim()) return { success: false, error: 'Request title is required' };
+  if (!input.details.reason.trim()) return { success: false, error: 'Reason/details are required' };
+
+  const newReq: StaffRequest = {
+    id: `req-${Date.now()}`,
+    user_id: input.user_id,
+    user_name: input.user_name,
+    user_role: input.user_role,
+    location_id: input.location_id,
+    location_name: input.location_name,
+    type: input.type,
+    title: input.title.trim(),
+    details: input.details,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+  };
+
+  if (USE_MOCK_DATA) {
+    MOCK_STAFF_REQUESTS.unshift(newReq);
+    return { success: true, data: newReq };
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('staff_requests').insert(newReq).select().single();
+  if (!error && data) return { success: true, data: data as StaffRequest };
+  MOCK_STAFF_REQUESTS.unshift(newReq);
+  return { success: true, data: newReq };
+}
+
+export async function updateStaffRequestStatus(
+  id: string,
+  status: StaffRequestStatus,
+  reviewerId: string,
+  reviewerName: string,
+  reviewNotes?: string
+): Promise<ServiceResponse<StaffRequest>> {
+  const req = MOCK_STAFF_REQUESTS.find((r) => r.id === id);
+  if (!req) return { success: false, error: 'Request not found' };
+
+  req.status = status;
+  req.reviewed_by = reviewerId;
+  req.reviewer_name = reviewerName;
+  req.reviewed_at = new Date().toISOString();
+  req.review_notes = reviewNotes || null;
+
+  if (status === 'approved') {
+    if (req.type === 'restock' && req.details.product_id && req.details.quantity && req.location_id) {
+      const existing = MOCK_INVENTORY.find((i) => i.product_id === req.details.product_id && i.location_id === req.location_id);
+      if (existing) {
+        existing.quantity += req.details.quantity;
+      } else {
+        MOCK_INVENTORY.push({
+          id: `inv-${Date.now()}`,
+          product_id: req.details.product_id,
+          location_id: req.location_id,
+          batch_number: req.details.batch_number || `BATCH-${new Date().getFullYear()}`,
+          quantity: req.details.quantity,
+          expiry_date: new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
+          status: 'in_stock',
+        });
+      }
+    } else if (req.type === 'return' && req.details.product_id && req.details.quantity && req.location_id) {
+      const existing = MOCK_INVENTORY.find((i) => i.product_id === req.details.product_id && i.location_id === req.location_id);
+      if (existing) {
+        existing.quantity = Math.max(0, existing.quantity - req.details.quantity);
+      }
+    }
+  }
+
+  const supabase = getSupabase();
+  await supabase.from('staff_requests').update({
+    status,
+    reviewed_by: reviewerId,
+    reviewer_name: reviewerName,
+    reviewed_at: req.reviewed_at,
+    review_notes: req.review_notes,
+  }).eq('id', id);
+
+  return { success: true, data: req };
+}
+
+/* ============================================================
+   27. ANNOUNCEMENTS
+   ============================================================ */
+export async function getAnnouncements(userRole?: UserRole, locationId?: string | null): Promise<Announcement[]> {
+  if (USE_MOCK_DATA) {
+    let list = [...MOCK_ANNOUNCEMENTS];
+    if (userRole && userRole !== 'super_admin' && userRole !== 'ceo') {
+      list = list.filter((a) => a.scope === 'all' || (a.scope === 'clinic' && a.location_id === locationId));
+    }
+    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
+  if (!error && data) return data as Announcement[];
+  return [...MOCK_ANNOUNCEMENTS];
+}
+
+export interface CreateAnnouncementInput {
+  title: string;
+  message: string;
+  scope: AnnouncementScope;
+  location_id?: string | null;
+  location_name?: string | null;
+  author_id: string;
+  author_name: string;
+  author_role: UserRole;
+  priority: AnnouncementPriority;
+}
+
+export async function createAnnouncement(input: CreateAnnouncementInput): Promise<ServiceResponse<Announcement>> {
+  if (!input.title.trim()) return { success: false, error: 'Title is required' };
+  if (!input.message.trim()) return { success: false, error: 'Message content is required' };
+
+  const newAnn: Announcement = {
+    id: `ann-${Date.now()}`,
+    title: input.title.trim(),
+    message: input.message.trim(),
+    scope: input.scope,
+    location_id: input.location_id || null,
+    location_name: input.location_name || null,
+    author_id: input.author_id,
+    author_name: input.author_name,
+    author_role: input.author_role,
+    priority: input.priority,
+    created_at: new Date().toISOString(),
+  };
+
+  if (USE_MOCK_DATA) {
+    MOCK_ANNOUNCEMENTS.unshift(newAnn);
+    return { success: true, data: newAnn };
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('announcements').insert(newAnn).select().single();
+  if (!error && data) return { success: true, data: data as Announcement };
+  MOCK_ANNOUNCEMENTS.unshift(newAnn);
+  return { success: true, data: newAnn };
+}
+
+/* ============================================================
+   28. PRODUCT RECALL & PRICE BATCH EDITOR
+   ============================================================ */
+export async function recallProductBatch(
+  batchNumber: string,
+  reason: string,
+  recalledBy: string
+): Promise<ServiceResponse<{ affectedCount: number }>> {
+  if (!batchNumber.trim()) return { success: false, error: 'Batch number is required' };
+  
+  let count = 0;
+  for (const item of MOCK_INVENTORY) {
+    if (item.batch_number.toLowerCase() === batchNumber.toLowerCase().trim()) {
+      item.status = 'expired';
+      count += item.quantity;
+    }
+  }
+
+  MOCK_AUDIT_LOGS.unshift({
+    id: `aud-${Date.now()}`,
+    table_name: 'inventory',
+    record_id: batchNumber,
+    action: 'PRODUCT_RECALL_INITIATED',
+    actor_id: recalledBy,
+    actor_name: 'Inventory Operations',
+    actor_role: 'inventory_manager',
+    category: 'inventory',
+    severity: 'critical',
+    details: { batchNumber, reason, quarantinedUnits: count },
+    created_at: new Date().toISOString(),
+  });
+
+  return { success: true, data: { affectedCount: count } };
+}
+
+export async function batchUpdateProductPrices(
+  updates: Array<{ productId: string; newPrice: number }>
+): Promise<ServiceResponse> {
+  if (!updates.length) return { success: false, error: 'No updates provided' };
+
+  for (const up of updates) {
+    const prod = MOCK_PRODUCTS.find((p) => p.id === up.productId);
+    if (prod && up.newPrice > 0) {
+      prod.unit_price = up.newPrice;
+    }
+  }
+  return { success: true };
+}
+
+/* ============================================================
+   29. FINANCIAL & SALARY ADJUSTMENTS
+   ============================================================ */
+export async function applyCompensationAdjustment(
+  employeeId: string,
+  type: 'increase' | 'reduction' | 'bonus' | 'incentive',
+  amount: number,
+  reason: string,
+  appliedBy: string
+): Promise<ServiceResponse> {
+  if (!employeeId) return { success: false, error: 'Employee is required' };
+  if (!amount || amount <= 0) return { success: false, error: 'Valid amount is required' };
+  if (!reason.trim()) return { success: false, error: 'Reason is required' };
+
+  const salary = MOCK_SALARIES.find((s) => s.user_id === employeeId);
+  if (salary) {
+    if (type === 'increase') {
+      salary.basic_salary += amount;
+      salary.total_gross += amount;
+      salary.net_pay += amount;
+    } else if (type === 'reduction') {
+      const reduction = Math.min(amount, Math.max(0, salary.basic_salary - 30000));
+      salary.basic_salary -= reduction;
+      salary.total_gross -= reduction;
+      salary.net_pay -= reduction;
+    } else if (type === 'bonus' || type === 'incentive') {
+      salary.custom_additions = salary.custom_additions || [];
+      salary.custom_additions.push({
+        id: `adj-${Date.now()}`,
+        label: `${type === 'bonus' ? 'Performance Bonus' : 'Sales Incentive'} - ${reason}`,
+        type: 'flat',
+        value: amount,
+        amount,
+      });
+      salary.total_gross += amount;
+      salary.net_pay += amount;
+    }
+    salary.updated_at = new Date().toISOString();
+  }
+
+  MOCK_AUDIT_LOGS.unshift({
+    id: `aud-${Date.now()}`,
+    table_name: 'salaries',
+    record_id: employeeId,
+    action: `COMPENSATION_ADJUSTMENT_${type.toUpperCase()}`,
+    actor_id: appliedBy,
+    actor_name: 'Finance Controller',
+    actor_role: 'finance_manager',
+    category: 'financial',
+    severity: 'warning',
+    details: { employeeId, type, amount, reason },
+    created_at: new Date().toISOString(),
+  });
+
+  return { success: true };
+}
+

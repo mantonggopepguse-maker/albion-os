@@ -7,3 +7,5 @@ node_modules
 *.md
 dump*.txt
 .agents
+test-results
+playwright-report

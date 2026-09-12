@@ -36,8 +36,8 @@ import {
   useInvoices,
   type AddCustomerInput,
 } from '@/hooks/use-supabase-data';
-import type { Customer } from '@/lib/types';
-import { updateCustomer } from '@/lib/data-service';
+import type { Customer, Species } from '@/lib/types';
+import { updateCustomer, addPatient } from '@/lib/data-service';
 import { useAuth } from '@/lib/auth-context';
 import styles from './customers.module.css';
 
@@ -120,6 +120,32 @@ const INITIAL_FORM: FormState = {
   location_id: '',
 };
 
+interface PetFormState {
+  owner_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  state: string;
+  pet_name: string;
+  species: Species;
+  breed: string;
+  gender: 'Male' | 'Female';
+  date_of_birth: string;
+}
+
+const INITIAL_PET_FORM: PetFormState = {
+  owner_name: '',
+  phone: '',
+  email: '',
+  address: '',
+  state: 'Anambra',
+  pet_name: '',
+  species: 'Dog',
+  breed: '',
+  gender: 'Male',
+  date_of_birth: '',
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ── CustomersPage — Exported page component ───────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
@@ -137,6 +163,7 @@ export default function CustomersPage() {
   // ── Supabase data hooks ──
   const { user: currentUser } = useAuth();
   const isCeo = currentUser?.role === 'ceo';
+  const isClinicStaff = ['clinic_admin', 'vet', 'receptionist', 'vet_tech'].includes(currentUser?.role || '');
 
   /** Live customer data from Supabase — fetch inactive if CEO */
   const { customers, loading: customersLoading, addCustomer, refetch } = useCustomers(isCeo);
@@ -158,6 +185,7 @@ export default function CustomersPage() {
 
   /** Controlled form field values for the Add Customer modal. */
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [petForm, setPetForm] = useState<PetFormState>(INITIAL_PET_FORM);
 
   /** Tracks whether the form is currently submitting (prevents double-submit). */
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -242,6 +270,10 @@ export default function CustomersPage() {
    */
   const openModal = () => {
     setForm({ ...INITIAL_FORM, location_id: currentUser?.location_id || '' });
+    setPetForm({
+      ...INITIAL_PET_FORM,
+      state: currentUser?.location_id ? (locations.find((l) => l.id === currentUser.location_id)?.state || 'Anambra') : 'Anambra',
+    });
     setShowModal(true);
   };
 
@@ -256,17 +288,74 @@ export default function CustomersPage() {
    * Flow:
    * 1. Prevents default form behaviour (no page reload)
    * 2. Runs client-side validation on all required fields
-   * 3. Calls `addCustomer()` from the data service layer
-   * 4. On success → shows success toast, refreshes list, closes modal
-   * 5. On failure → shows error toast with the service's error message
+   * 3. If clinic staff: registers pet client + animal patient profile
+   * 4. Else: registers standard commercial pharmaceutical client
    */
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // ── Client-side validation ──
-    // These checks run before hitting Supabase, providing instant
-    // feedback for missing fields. Supabase has its own constraints
-    // too (belt-and-suspenders approach).
+    // ── Clinic Staff Pet Client Flow ──
+    if (isClinicStaff) {
+      if (!petForm.owner_name.trim()) {
+        setToast({ message: 'Pet owner name is required.', type: 'error' });
+        return;
+      }
+      if (!petForm.phone.trim()) {
+        setToast({ message: 'Owner phone number is required.', type: 'error' });
+        return;
+      }
+      if (!petForm.address.trim()) {
+        setToast({ message: 'Residential address is required.', type: 'error' });
+        return;
+      }
+      if (!petForm.pet_name.trim()) {
+        setToast({ message: 'Pet name is required.', type: 'error' });
+        return;
+      }
+
+      setIsSubmitting(true);
+      const locId = currentUser?.location_id || locations.find((l) => l.type === 'clinic')?.id || locations[0]?.id || 'loc-0001-onitsha-hq';
+
+      const result = await addCustomer({
+        name: petForm.owner_name.trim(),
+        business_name: `${petForm.pet_name.trim()} (${petForm.species} Owner)`,
+        phone: petForm.phone.trim(),
+        email: petForm.email.trim() || undefined,
+        address: petForm.address.trim(),
+        state: petForm.state || 'Anambra',
+        credit_limit: 0,
+        location_id: locId,
+      });
+
+      if (result.success) {
+        try {
+          await addPatient({
+            owner_id: result.data?.id || `user-client-${Date.now()}`,
+            name: petForm.pet_name.trim(),
+            species: petForm.species,
+            breed: petForm.breed.trim() || undefined,
+            gender: petForm.gender,
+            date_of_birth: petForm.date_of_birth || undefined,
+          });
+        } catch {
+          // non-blocking
+        }
+        setToast({
+          message: `Pet client "${petForm.owner_name}" and patient "${petForm.pet_name}" registered successfully!`,
+          type: 'success',
+        });
+        closeModal();
+      } else {
+        setToast({
+          message: result.error || 'Failed to register pet client.',
+          type: 'error',
+        });
+      }
+      setIsSubmitting(false);
+      return;
+    }
+
+    // ── Standard Commercial Customer Flow ──
     if (!form.name.trim()) {
       setToast({ message: 'Customer name is required.', type: 'error' });
       return;
@@ -528,180 +617,361 @@ export default function CustomersPage() {
       <Modal
         isOpen={showModal}
         onClose={closeModal}
-        title="Add New Customer"
-        subtitle="Fill in the details below to register a new customer."
-        maxWidth="620px"
+        title={isClinicStaff ? "🐾 New Pet Client & Patient Registration" : "Add New Customer"}
+        subtitle={
+          isClinicStaff
+            ? "Register pet owner contact details and animal patient profile."
+            : "Fill in the details below to register a new customer."
+        }
+        maxWidth="640px"
       >
         <form className={styles.form} onSubmit={handleSubmit} noValidate>
-          {/* ── Row 1: Name + Business Name (side by side on desktop) ── */}
-          <div className={styles.formRow}>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="cust-name">
-                Name <span className={styles.required}>*</span>
-              </label>
-              <input
-                id="cust-name"
-                type="text"
-                name="name"
-                className={styles.formInput}
-                placeholder="e.g. Chinedu Okafor"
-                value={form.name}
-                onChange={handleChange}
-                required
-                autoFocus
-              />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="cust-business">
-                Business Name <span className={styles.required}>*</span>
-              </label>
-              <input
-                id="cust-business"
-                type="text"
-                name="business_name"
-                className={styles.formInput}
-                placeholder="e.g. Okafor Pharma Ltd"
-                value={form.business_name}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </div>
+          {isClinicStaff ? (
+            <>
+              {/* Pet Owner Details */}
+              <div style={{ paddingBottom: '6px', borderBottom: '1px solid #e2e8f0', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-navy)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  👤 Pet Owner / Client Information
+                </span>
+              </div>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>
+                    Owner Full Name <span className={styles.required}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className={styles.formInput}
+                    placeholder="e.g. Dr. Ngozi Eze"
+                    value={petForm.owner_name}
+                    onChange={(e) => setPetForm({ ...petForm, owner_name: e.target.value })}
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>
+                    Phone Number <span className={styles.required}>*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    className={styles.formInput}
+                    placeholder="e.g. 08031234567"
+                    value={petForm.phone}
+                    onChange={(e) => setPetForm({ ...petForm, phone: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
 
-          {/* ── Row 2: Phone + Email (side by side) ── */}
-          <div className={styles.formRow}>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="cust-phone">
-                Phone <span className={styles.required}>*</span>
-              </label>
-              <input
-                id="cust-phone"
-                type="tel"
-                name="phone"
-                className={styles.formInput}
-                placeholder="e.g. 08012345678"
-                value={form.phone}
-                onChange={handleChange}
-                required
-              />
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="cust-email">
-                Email <span className={styles.formHint}>(optional)</span>
-              </label>
-              <input
-                id="cust-email"
-                type="email"
-                name="email"
-                className={styles.formInput}
-                placeholder="e.g. chinedu@example.com"
-                value={form.email}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>
+                    Email <span className={styles.formHint}>(optional)</span>
+                  </label>
+                  <input
+                    type="email"
+                    className={styles.formInput}
+                    placeholder="e.g. ngozi@example.com"
+                    value={petForm.email}
+                    onChange={(e) => setPetForm({ ...petForm, email: e.target.value })}
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>
+                    State <span className={styles.required}>*</span>
+                  </label>
+                  <select
+                    className={styles.formSelect}
+                    value={petForm.state}
+                    onChange={(e) => setPetForm({ ...petForm, state: e.target.value })}
+                    required
+                  >
+                    {NIGERIAN_STATES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-          {/* ── Row 3: Address (full width textarea) ── */}
-          <div className={styles.formGroup}>
-            <label className={styles.formLabel} htmlFor="cust-address">
-              Address <span className={styles.required}>*</span>
-            </label>
-            <textarea
-              id="cust-address"
-              name="address"
-              className={styles.formTextarea}
-              placeholder="e.g. 15 New Market Road, Main Market, Onitsha"
-              rows={3}
-              value={form.address}
-              onChange={handleChange}
-              required
-            />
-          </div>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>
+                  Residential Address <span className={styles.required}>*</span>
+                </label>
+                <textarea
+                  className={styles.formTextarea}
+                  placeholder="e.g. 14 Ridge Road, GRA, Onitsha"
+                  rows={2}
+                  value={petForm.address}
+                  onChange={(e) => setPetForm({ ...petForm, address: e.target.value })}
+                  required
+                />
+              </div>
 
-          {/* ── Row 4: State + Location (side by side dropdowns) ── */}
-          <div className={styles.formRow}>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="cust-state">
-                State <span className={styles.required}>*</span>
-              </label>
-              <select
-                id="cust-state"
-                name="state"
-                className={styles.formSelect}
-                value={form.state}
-                onChange={handleChange}
-                required
-              >
-                <option value="" disabled>
-                  — Select State —
-                </option>
-                {NIGERIAN_STATES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="cust-location">
-                Location <span className={styles.required}>*</span>
-              </label>
-              <select
-                id="cust-location"
-                name="location_id"
-                className={styles.formSelect}
-                value={form.location_id}
-                onChange={handleChange}
-                required
-              >
-                <option value="" disabled>
-                  — Select Location —
-                </option>
-                {locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.name} ({loc.state})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+              {/* Patient Pet Details */}
+              <div style={{ paddingBottom: '6px', borderBottom: '1px solid #e2e8f0', margin: '14px 0 8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  🐾 Patient (Pet) Information
+                </span>
+              </div>
 
-          {/* ── Row 5: Credit Limit (full width) ── */}
-          <div className={styles.formGroup}>
-            <label className={styles.formLabel} htmlFor="cust-credit">
-              Credit Limit (₦) <span className={styles.required}>*</span>
-            </label>
-            <input
-              id="cust-credit"
-              type="number"
-              name="credit_limit"
-              className={styles.formInput}
-              placeholder="e.g. 500000"
-              min={0}
-              value={form.credit_limit}
-              onChange={handleChange}
-              required
-            />
-          </div>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>
+                    Pet Name <span className={styles.required}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className={styles.formInput}
+                    placeholder="e.g. Max, Bella, Rocky"
+                    value={petForm.pet_name}
+                    onChange={(e) => setPetForm({ ...petForm, pet_name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>
+                    Species <span className={styles.required}>*</span>
+                  </label>
+                  <select
+                    className={styles.formSelect}
+                    value={petForm.species}
+                    onChange={(e) => setPetForm({ ...petForm, species: e.target.value as Species })}
+                    required
+                  >
+                    {['Dog', 'Cat', 'Bird', 'Rabbit', 'Fish', 'Reptile', 'Horse', 'Goat', 'Sheep', 'Cattle', 'Poultry', 'Other'].map((sp) => (
+                      <option key={sp} value={sp}>{sp}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-          {/* ── Form Actions: Cancel + Submit ── */}
-          <div className={styles.formActions}>
-            <button
-              type="button"
-              className={styles.cancelBtn}
-              onClick={closeModal}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className={styles.submitBtn}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Adding…' : '＋ Add Customer'}
-            </button>
-          </div>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Breed</label>
+                  <input
+                    type="text"
+                    className={styles.formInput}
+                    placeholder="e.g. Boerboel, Rottweiler, Persian"
+                    value={petForm.breed}
+                    onChange={(e) => setPetForm({ ...petForm, breed: e.target.value })}
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel}>Gender</label>
+                  <select
+                    className={styles.formSelect}
+                    value={petForm.gender}
+                    onChange={(e) => setPetForm({ ...petForm, gender: e.target.value as 'Male' | 'Female' })}
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Date of Birth / Approximate Age</label>
+                <input
+                  type="date"
+                  className={styles.formInput}
+                  value={petForm.date_of_birth}
+                  onChange={(e) => setPetForm({ ...petForm, date_of_birth: e.target.value })}
+                />
+              </div>
+
+              {/* Form Actions */}
+              <div className={styles.formActions}>
+                <button
+                  type="button"
+                  className={styles.cancelBtn}
+                  onClick={closeModal}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={styles.submitBtn}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Registering…' : '🐾 Register Client & Patient'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* ── Row 1: Name + Business Name (side by side on desktop) ── */}
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel} htmlFor="cust-name">
+                    Name <span className={styles.required}>*</span>
+                  </label>
+                  <input
+                    id="cust-name"
+                    type="text"
+                    name="name"
+                    className={styles.formInput}
+                    placeholder="e.g. Chinedu Okafor"
+                    value={form.name}
+                    onChange={handleChange}
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel} htmlFor="cust-business">
+                    Business Name <span className={styles.required}>*</span>
+                  </label>
+                  <input
+                    id="cust-business"
+                    type="text"
+                    name="business_name"
+                    className={styles.formInput}
+                    placeholder="e.g. Okafor Pharma Ltd"
+                    value={form.business_name}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* ── Row 2: Phone + Email (side by side) ── */}
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel} htmlFor="cust-phone">
+                    Phone <span className={styles.required}>*</span>
+                  </label>
+                  <input
+                    id="cust-phone"
+                    type="tel"
+                    name="phone"
+                    className={styles.formInput}
+                    placeholder="e.g. 08012345678"
+                    value={form.phone}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel} htmlFor="cust-email">
+                    Email <span className={styles.formHint}>(optional)</span>
+                  </label>
+                  <input
+                    id="cust-email"
+                    type="email"
+                    name="email"
+                    className={styles.formInput}
+                    placeholder="e.g. chinedu@example.com"
+                    value={form.email}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              {/* ── Row 3: Address (full width textarea) ── */}
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel} htmlFor="cust-address">
+                  Address <span className={styles.required}>*</span>
+                </label>
+                <textarea
+                  id="cust-address"
+                  name="address"
+                  className={styles.formTextarea}
+                  placeholder="e.g. 15 New Market Road, Main Market, Onitsha"
+                  rows={3}
+                  value={form.address}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              {/* ── Row 4: State + Location (side by side dropdowns) ── */}
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel} htmlFor="cust-state">
+                    State <span className={styles.required}>*</span>
+                  </label>
+                  <select
+                    id="cust-state"
+                    name="state"
+                    className={styles.formSelect}
+                    value={form.state}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="" disabled>
+                      — Select State —
+                    </option>
+                    {NIGERIAN_STATES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel} htmlFor="cust-location">
+                    Location <span className={styles.required}>*</span>
+                  </label>
+                  <select
+                    id="cust-location"
+                    name="location_id"
+                    className={styles.formSelect}
+                    value={form.location_id}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="" disabled>
+                      — Select Location —
+                    </option>
+                    {locations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name} ({loc.state})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* ── Row 5: Credit Limit (full width) ── */}
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel} htmlFor="cust-credit">
+                  Credit Limit (₦) <span className={styles.required}>*</span>
+                </label>
+                <input
+                  id="cust-credit"
+                  type="number"
+                  name="credit_limit"
+                  className={styles.formInput}
+                  placeholder="e.g. 500000"
+                  min={0}
+                  value={form.credit_limit}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              {/* ── Form Actions: Cancel + Submit ── */}
+              <div className={styles.formActions}>
+                <button
+                  type="button"
+                  className={styles.cancelBtn}
+                  onClick={closeModal}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={styles.submitBtn}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Adding…' : '＋ Add Customer'}
+                </button>
+              </div>
+            </>
+          )}
         </form>
       </Modal>
 

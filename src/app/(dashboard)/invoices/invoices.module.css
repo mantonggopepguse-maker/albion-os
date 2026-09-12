@@ -470,11 +470,23 @@
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
+  .page {
+    padding: 0.85rem 0.75rem;
+  }
   .toolbar { flex-direction: column; }
-  .addBtn { width: 100%; }
+  .addBtn { width: 100%; min-height: 44px; }
+  .tableWrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+  .table {
+    min-width: 620px;
+  }
   .formRow { grid-template-columns: 1fr; }
   .lineHeader, .lineRow { grid-template-columns: 2fr 1fr 1fr 1fr 30px; font-size: 0.75rem; }
   .formActions { flex-direction: column; }
-  .cancelBtn, .submitBtn { width: 100%; }
-  .summaryGrid { grid-template-columns: 1fr 1fr; }
+  .cancelBtn, .submitBtn { width: 100%; min-height: 44px; }
+  .summaryGrid { grid-template-columns: 1fr 1fr; gap: 0.65rem; }
+  .summaryCard { padding: 0.75rem 0.85rem; }
 }

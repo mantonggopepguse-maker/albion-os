@@ -143,7 +143,7 @@
 }
 
 @media (max-width: 768px) {
-  .userInfo {
-    display: none;
+  .topbar {
+    display: none !important;
   }
 }

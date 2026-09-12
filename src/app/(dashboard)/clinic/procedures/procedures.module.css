@@ -406,6 +406,90 @@
   color: var(--color-text-muted);
 }
 
+.protocolPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.protocolPill:hover {
+  background: #dcfce7;
+  transform: translateY(-1px);
+}
+
+.protocolBuilder {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drugRow {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1.2fr auto;
+  gap: 8px;
+  align-items: center;
+  background: white;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.orToggleBtn {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  color: #475569;
+  text-transform: uppercase;
+}
+
+.orToggleBtnActive {
+  background: #fef3c7;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.removeDrugBtn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.addDrugBtn {
+  align-self: flex-start;
+  padding: 4px 10px;
+  background: #f1f5f9;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-navy);
+  cursor: pointer;
+}
+
+.addDrugBtn:hover {
+  background: #e2e8f0;
+}
+
 @media (max-width: 1024px) {
   .statsGrid {
     grid-template-columns: repeat(2, 1fr);
@@ -424,6 +508,9 @@
     align-items: stretch;
   }
   .formRow {
+    grid-template-columns: 1fr;
+  }
+  .drugRow {
     grid-template-columns: 1fr;
   }
 }

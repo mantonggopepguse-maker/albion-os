@@ -30,7 +30,15 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const { customers } = useCustomers();
   const { invoices } = useInvoices();
   const { inventory } = useInventory();
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const stored = localStorage.getItem('albion_dismissed_notifications');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
 
   const [now] = useState(() => Date.now());
@@ -126,7 +134,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const dismiss = useCallback((id: string) => {
-    setDismissed((prev) => new Set(prev).add(id));
+    setDismissed((prev) => {
+      const next = new Set(prev).add(id);
+      try {
+        localStorage.setItem('albion_dismissed_notifications', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
     setReadIds((prev) => new Set(prev).add(id));
   }, []);
 
@@ -134,6 +148,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setDismissed((prev) => {
       const next = new Set(prev);
       for (const n of notifications) next.add(n.id);
+      try {
+        localStorage.setItem('albion_dismissed_notifications', JSON.stringify(Array.from(next)));
+      } catch {}
       return next;
     });
     setReadIds((prev) => {

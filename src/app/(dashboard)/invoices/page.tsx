@@ -86,6 +86,9 @@ export default function InvoicesPage() {
   /* ── Form state ── */
   const [customerId, setCustomerId] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [vatRate, setVatRate] = useState('7.5');
+  const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent');
+  const [discountValue, setDiscountValue] = useState('');
   const [lineItems, setLineItems] = useState<LineItem[]>([{ product_id: '', quantity: 1 }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -157,8 +160,26 @@ export default function InvoicesPage() {
   }, [lineItems, products]);
 
   const subtotal = useMemo(() => lineCalcs.reduce((s, l) => s + l.total, 0), [lineCalcs]);
-  const vat = Math.round(subtotal * 0.075);
-  const grandTotal = subtotal + vat;
+  const parsedVatRate = useMemo(() => {
+    const parsed = parseFloat(vatRate);
+    return isNaN(parsed) ? 0 : Math.max(0, parsed);
+  }, [vatRate]);
+  const vat = useMemo(() => Math.round(subtotal * (parsedVatRate / 100)), [subtotal, parsedVatRate]);
+
+  const parsedDiscountVal = useMemo(() => {
+    const parsed = parseFloat(discountValue);
+    return isNaN(parsed) || parsed < 0 ? 0 : parsed;
+  }, [discountValue]);
+
+  const discountAmount = useMemo(() => {
+    if (!parsedDiscountVal) return 0;
+    if (discountType === 'percent') {
+      return Math.round(subtotal * (parsedDiscountVal / 100));
+    }
+    return Math.min(subtotal, Math.round(parsedDiscountVal));
+  }, [subtotal, parsedDiscountVal, discountType]);
+
+  const grandTotal = useMemo(() => Math.max(0, subtotal + vat - discountAmount), [subtotal, vat, discountAmount]);
 
   /* ── Line item handlers ── */
   const updateLine = useCallback((index: number, field: keyof LineItem, value: string | number) => {
@@ -181,6 +202,9 @@ export default function InvoicesPage() {
   const resetForm = useCallback(() => {
     setCustomerId('');
     setDueDate('');
+    setVatRate('7.5');
+    setDiscountType('percent');
+    setDiscountValue('');
     setLineItems([{ product_id: '', quantity: 1 }]);
   }, []);
 
@@ -227,6 +251,9 @@ export default function InvoicesPage() {
         customer_id: customerId,
         items: lineItems.map((l) => ({ product_id: l.product_id, quantity: l.quantity })),
         due_date: dueDate,
+        vat_rate: parsedVatRate,
+        discount_type: discountType,
+        discount_value: parsedDiscountVal,
       },
       products,
       user.id,
@@ -358,18 +385,37 @@ export default function InvoicesPage() {
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
                           style={{
-                            padding: '0.25rem 0.65rem',
+                            padding: '0.25rem 0.75rem',
                             border: '1px solid var(--color-border)',
                             borderRadius: 'var(--radius-md)',
                             fontSize: '0.8rem',
                             fontWeight: 600,
-                            background: 'var(--color-surface-card)',
-                            color: 'var(--color-text-main)',
+                            background: '#fff',
+                            color: 'var(--color-slate)',
                             cursor: 'pointer',
                           }}
                           onClick={() => setViewingInvoice(inv)}
                         >
                           👁️ View
+                        </button>
+                        <button
+                          style={{
+                            padding: '0.25rem 0.65rem',
+                            border: '1px solid #c5a55a',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            background: '#fff',
+                            color: '#093961',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                          onClick={() => window.open(`/invoices/${inv.id}/receipt`, '_blank')}
+                          title="View & Print Official Sales Receipt"
+                        >
+                          🧾 Receipt
                         </button>
                         {inv.status === 'draft' && (
                           <button
@@ -480,6 +526,49 @@ export default function InvoicesPage() {
               </div>
             </div>
 
+            {/* Row: Custom VAT & Discount */}
+            <div className={styles.formRow}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Custom VAT Rate (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  className={styles.formInput}
+                  value={vatRate}
+                  onChange={(e) => setVatRate(e.target.value)}
+                  placeholder="Default: 7.5%"
+                />
+                <span style={{ fontSize: '11px', color: 'var(--color-gray)' }}>Enter 0 for tax-exempt customer / order</span>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Discount</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select
+                    className={styles.formSelect}
+                    style={{ width: '130px' }}
+                    value={discountType}
+                    onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
+                  >
+                    <option value="percent">Percentage (%)</option>
+                    <option value="fixed">Fixed (₦)</option>
+                  </select>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    className={styles.formInput}
+                    style={{ flex: 1 }}
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(e.target.value)}
+                    placeholder={discountType === 'percent' ? 'e.g. 5%' : 'e.g. 10000'}
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* ── Line Items Section ── */}
             <div className={styles.lineSection}>
               <div className={styles.lineSectionHeader}>
@@ -550,8 +639,14 @@ export default function InvoicesPage() {
                 <span>Subtotal</span>
                 <span>{fmt(subtotal)}</span>
               </div>
+              {discountAmount > 0 && (
+                <div className={styles.totalRow} style={{ color: '#15803d', fontWeight: 600 }}>
+                  <span>Discount ({discountType === 'percent' ? `${parsedDiscountVal}%` : 'Fixed'})</span>
+                  <span>- {fmt(discountAmount)}</span>
+                </div>
+              )}
               <div className={styles.totalRow}>
-                <span>VAT (7.5%)</span>
+                <span>VAT ({parsedVatRate}%)</span>
                 <span>{fmt(vat)}</span>
               </div>
               <div className={`${styles.totalRow} ${styles.grandTotal}`}>
@@ -645,8 +740,14 @@ export default function InvoicesPage() {
                   <span>Subtotal:</span>
                   <span>{fmt(viewingInvoice.subtotal || Math.round(viewingInvoice.total / 1.075))}</span>
                 </div>
+                {viewingInvoice.discount_amount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', fontSize: '0.85rem', color: '#15803d' }}>
+                    <span>Discount:</span>
+                    <span>- {fmt(viewingInvoice.discount_amount)}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', fontSize: '0.85rem', color: 'var(--color-gray)' }}>
-                  <span>VAT (7.5%):</span>
+                  <span>VAT ({viewingInvoice.vat_rate ?? 7.5}%):</span>
                   <span>{fmt(viewingInvoice.vat || Math.round(viewingInvoice.total - (viewingInvoice.total / 1.075)))}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', fontSize: '1rem', fontWeight: 700, marginTop: '0.25rem' }}>
@@ -662,6 +763,24 @@ export default function InvoicesPage() {
                   onClick={() => setViewingInvoice(null)}
                 >
                   Close
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid #c5a55a',
+                    background: '#fff',
+                    color: '#8b6b23',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                  onClick={() => window.open(`/invoices/${viewingInvoice.id}/receipt`, '_blank')}
+                >
+                  🧾 Official Receipt (PAID)
                 </button>
                 <button
                   type="button"

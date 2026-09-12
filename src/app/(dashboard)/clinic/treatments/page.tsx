@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
 import Topbar from '@/components/layout/Topbar';
 import Modal from '@/components/ui/Modal';
 import Toast from '@/components/ui/Toast';
@@ -248,8 +249,19 @@ export default function ClinicTreatmentsPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <button className={styles.primaryBtn} onClick={() => setShowAddModal(true)}>
-                + New Treatment
+              <Link
+                href="/clinic/treatments/new"
+                className={styles.primaryBtn}
+                style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+              >
+                🩺 Dedicated Treatment Workflow
+              </Link>
+              <button
+                className={styles.primaryBtn}
+                onClick={() => setShowAddModal(true)}
+                style={{ background: '#f1f5f9', color: 'var(--color-navy)', border: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}
+              >
+                + Quick Add
               </button>
             </div>
           </div>

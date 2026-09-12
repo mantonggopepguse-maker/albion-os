@@ -342,16 +342,18 @@
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
+  .page { padding: 0.85rem 0.75rem; }
   .tabs { flex-wrap: wrap; }
   .toolbar { flex-direction: column; gap: var(--space-3); align-items: stretch; }
-  .allocateBtn { width: 100%; text-align: center; }
-  .stockTakeBtn { width: 100%; text-align: center; }
+  .allocateBtn { width: 100%; text-align: center; min-height: 44px; }
+  .stockTakeBtn { width: 100%; text-align: center; min-height: 44px; }
   .formActions { flex-direction: column; }
-  .cancelBtn, .submitBtn { width: 100%; }
+  .cancelBtn, .submitBtn { width: 100%; min-height: 44px; }
+  .table { min-width: 650px; }
 }
 
 @media (max-width: 640px) {
-  .page { padding: var(--space-4); }
+  .page { padding: 0.75rem 0.65rem; }
   .table thead th,
   .table tbody td {
     padding: var(--space-2) var(--space-3);

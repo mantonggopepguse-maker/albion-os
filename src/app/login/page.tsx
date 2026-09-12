@@ -30,10 +30,10 @@
 /* ────────────────────────────────────────────
    Dependencies
    ──────────────────────────────────────────── */
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { AuthProvider, useAuth, DEMO_PROFILES, DemoProfile, QUICK_LOGIN_USERS, DEV_PASSWORD, ENABLE_DEMO_LOGIN } from '@/lib/auth-context';
+import { AuthProvider, useAuth, DEMO_PROFILES, DemoProfile, ENABLE_DEMO_LOGIN } from '@/lib/auth-context';
 import styles from './login.module.css';
 
 /* ────────────────────────────────────────────
@@ -129,6 +129,30 @@ function LoginForm() {
     }
   }, [user, router, searchParams]);
 
+  /**
+   * handleDemoLogin — 1-click instant demo profile authentication.
+   * Directly sets the authenticated user role and loads their dashboard.
+   */
+  const handleDemoLogin = useCallback(async (profile: DemoProfile) => {
+    setError('');
+    setActiveDemoEmail(profile.email);
+    setIsSubmitting(true);
+    try {
+      const result = await loginAsDemo(profile);
+      if (result.success) {
+        router.push('/dashboard');
+      } else {
+        setError(result.error || 'Failed to login as demo user');
+        setIsSubmitting(false);
+        setActiveDemoEmail(null);
+      }
+    } catch {
+      setError('An error occurred during demo login');
+      setIsSubmitting(false);
+      setActiveDemoEmail(null);
+    }
+  }, [loginAsDemo, router]);
+
   /* ── Auto-login on incoming ?demo_role=... ── */
   useEffect(() => {
     const demoRole = searchParams.get('demo_role');
@@ -138,10 +162,12 @@ function LoginForm() {
         (p) => p.role.toLowerCase() === normalized || p.email.toLowerCase().includes(normalized)
       );
       if (matchedProfile) {
-        handleDemoLogin(matchedProfile);
+        queueMicrotask(() => {
+          handleDemoLogin(matchedProfile);
+        });
       }
     }
-  }, [searchParams]);
+  }, [searchParams, handleDemoLogin]);
 
   /* ── Clinic handoff redirect helper ── */
   const handleClinicHandoff = (demo: typeof CLINIC_DEMO_USERS[0]) => {
@@ -187,30 +213,6 @@ function LoginForm() {
     } else {
       setError(result.error || 'Login failed');
       setIsSubmitting(false);
-    }
-  };
-
-  /**
-   * handleDemoLogin — 1-click instant demo profile authentication.
-   * Directly sets the authenticated user role and loads their dashboard.
-   */
-  const handleDemoLogin = async (profile: DemoProfile) => {
-    setError('');
-    setActiveDemoEmail(profile.email);
-    setIsSubmitting(true);
-    try {
-      const result = await loginAsDemo(profile);
-      if (result.success) {
-        router.push('/dashboard');
-      } else {
-        setError(result.error || 'Failed to login as demo user');
-        setIsSubmitting(false);
-        setActiveDemoEmail(null);
-      }
-    } catch {
-      setError('An error occurred during demo login');
-      setIsSubmitting(false);
-      setActiveDemoEmail(null);
     }
   };
 

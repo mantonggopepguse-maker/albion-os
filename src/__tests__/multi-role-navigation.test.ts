@@ -6,14 +6,40 @@ import type { UserRole } from '@/lib/types';
 import { addToQueue, updateQueueStatus, createTreatment, getQueue, getTreatments, addStaffUser, updateStaffUser } from '@/lib/data-service';
 
 describe('Multi-Role Navigation & Permission Matrix', () => {
-  it('returns all navigation items for super_admin', () => {
+  it('provides executive governance and financial links for super_admin while scoping away clinical weed routes', () => {
     const items = getNavItemsForRole('super_admin');
-    expect(items.length).toBe(NAV_ITEMS.length);
+    const hrefs = items.map((i) => i.href);
+    expect(hrefs).toContain('/dashboard');
+    expect(hrefs).toContain('/products');
+    expect(hrefs).toContain('/inventory');
+    expect(hrefs).toContain('/invoices');
+    expect(hrefs).toContain('/payments');
+    expect(hrefs).toContain('/expenses');
+    expect(hrefs).toContain('/reports');
+    expect(hrefs).toContain('/suppliers');
+    expect(hrefs).toContain('/payroll');
+    expect(hrefs).toContain('/clinic');
+    expect(hrefs).toContain('/staff');
+    expect(hrefs).toContain('/audit');
+    // Operational clinical routes and direct customer lists scoped away
+    expect(hrefs).not.toContain('/clinic/queue');
+    expect(hrefs).not.toContain('/clinic/reminders');
+    expect(hrefs).not.toContain('/clinic/surgery');
+    expect(hrefs).not.toContain('/clinic/calculators');
+    expect(hrefs).not.toContain('/customers');
   });
 
-  it('returns all navigation items for ceo', () => {
+  it('provides executive governance and financial links for ceo while scoping away clinical weed routes', () => {
     const items = getNavItemsForRole('ceo');
-    expect(items.length).toBe(NAV_ITEMS.length);
+    const hrefs = items.map((i) => i.href);
+    expect(hrefs).toContain('/dashboard');
+    expect(hrefs).toContain('/invoices');
+    expect(hrefs).toContain('/payroll');
+    expect(hrefs).toContain('/clinic');
+    expect(hrefs).toContain('/audit');
+    expect(hrefs).not.toContain('/clinic/surgery');
+    expect(hrefs).not.toContain('/clinic/calculators');
+    expect(hrefs).not.toContain('/customers');
   });
 
   it('restricts sales_rep from administrative HR and clinic fleet links', () => {
@@ -34,10 +60,11 @@ describe('Multi-Role Navigation & Permission Matrix', () => {
     expect(hrefs).toContain('/staff');
     expect(hrefs).toContain('/clinic');
     // Vet features
-    expect(hrefs).toContain('/clinic/queue');
     expect(hrefs).toContain('/clinic/appointments');
     expect(hrefs).toContain('/clinic/patients');
     expect(hrefs).toContain('/clinic/treatments');
+    expect(hrefs).toContain('/clinic/surgery');
+    expect(hrefs).not.toContain('/clinic/queue');
   });
 
   it('unifies navigation for multi-role commercial personnel (sales_rep + inventory_manager)', () => {

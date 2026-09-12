@@ -112,7 +112,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Customers',
     href: '/customers',
     icon: '👥',
-    roles: ['super_admin', 'sales_rep', 'ceo', 'clinic_admin', 'receptionist'],
+    roles: ['sales_rep', 'clinic_admin', 'receptionist'],
   },
   {
     // Invoices — sales orders and billing
@@ -133,7 +133,17 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Expenses',
     href: '/expenses',
     icon: '💸',
-    roles: ['super_admin', 'finance_manager', 'ceo', 'clinic_admin'],
+    roles: ['super_admin', 'sales_rep', 'finance_manager', 'ceo', 'clinic_admin'],
+  },
+  {
+    // Requests — leave, branch transfer, restock, return, and general staff requests
+    label: 'Requests',
+    href: '/requests',
+    icon: '📝',
+    roles: [
+      'super_admin', 'sales_rep', 'finance_manager', 'inventory_manager', 'ceo',
+      'clinic_admin', 'vet', 'vet_tech', 'vet_assistant', 'receptionist', 'lab_scientist', 'security', 'regional_manager'
+    ],
   },
   {
     // Reports — revenue, receivables, BI analytics
@@ -147,14 +157,14 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Suppliers',
     href: '/suppliers',
     icon: '🏭',
-    roles: ['super_admin', 'inventory_manager', 'ceo', 'clinic_admin'],
+    roles: ['super_admin', 'inventory_manager', 'ceo'],
   },
   {
     // Payroll — salary structures, staff allowances and payslips
     label: 'Payroll',
     href: '/payroll',
     icon: '💳',
-    roles: ['super_admin', 'finance_manager', 'ceo', 'clinic_admin'],
+    roles: ['super_admin', 'finance_manager', 'ceo'],
   },
   {
     // Clinic Branches — multi-practice network overview
@@ -164,95 +174,88 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['super_admin', 'ceo', 'clinic_admin', 'regional_manager'],
   },
   {
-    // Queue & Triage — live clinical intake and waiting room
-    label: 'Queue & Triage',
-    href: '/clinic/queue',
-    icon: '⏱️',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'vet_tech', 'vet_assistant', 'receptionist'],
-  },
-  {
     // Appointments — patient bookings and consultations
     label: 'Appointments',
     href: '/clinic/appointments',
     icon: '📅',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'vet_tech', 'vet_assistant', 'receptionist'],
+    roles: ['clinic_admin', 'vet', 'vet_tech', 'vet_assistant', 'receptionist'],
   },
   {
     // Patient Recalls & Preventive Care Reminders
     label: 'Recalls',
     href: '/clinic/reminders',
     icon: '🔔',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'vet_tech', 'receptionist'],
+    roles: ['clinic_admin', 'vet', 'vet_tech', 'receptionist'],
   },
   {
     // Patients — pet and animal medical records registry
     label: 'Patients',
     href: '/clinic/patients',
     icon: '🐾',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'vet_tech', 'vet_assistant', 'receptionist', 'lab_scientist'],
+    roles: ['clinic_admin', 'vet', 'vet_tech', 'vet_assistant', 'receptionist', 'lab_scientist'],
   },
   {
     // Treatments — clinical diagnosis, EHR and SOAP notes
     label: 'Treatments',
     href: '/clinic/treatments',
     icon: '🩺',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'vet_tech', 'vet_assistant'],
+    roles: ['clinic_admin', 'vet', 'vet_tech', 'vet_assistant'],
   },
   {
     // Procedures — clinical service catalog & fee schedule
     label: 'Procedures',
     href: '/clinic/procedures',
     icon: '📋',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet'],
+    roles: ['clinic_admin', 'vet'],
   },
   {
     // Duty Roster — clinic shifts and workforce timetable
     label: 'Duty Roster',
     href: '/clinic/shifts',
     icon: '🗓️',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'vet_tech', 'receptionist'],
+    roles: ['clinic_admin', 'vet', 'vet_tech', 'receptionist'],
   },
   {
     // Lab Hub — specimen testing, haematology & biochemistry
     label: 'Lab Hub',
     href: '/clinic/lab',
     icon: '🔬',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'lab_scientist'],
+    roles: ['clinic_admin', 'vet', 'lab_scientist'],
   },
   {
     // ICU Board — inpatient cages, vitals and fluid infusion monitoring
     label: 'ICU Board',
     href: '/clinic/icu',
     icon: '🛏️',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'vet_tech', 'vet_assistant'],
+    roles: ['clinic_admin', 'vet', 'vet_tech', 'vet_assistant'],
   },
   {
     // Pharmacy POS — clinical prescription checkout and narcotics lockbox
     label: 'Pharmacy POS',
     href: '/clinic/pharmacy',
     icon: '🏪',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'pharmacist', 'receptionist'],
+    roles: ['clinic_admin', 'vet', 'pharmacist', 'receptionist'],
   },
   {
     // Surgical Suite — pre-op checklist, anesthesia depth and procedure logging
     label: 'Surgical Suite',
     href: '/clinic/surgery',
     icon: '⚡',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'vet_tech'],
+    roles: ['clinic_admin', 'vet', 'vet_tech'],
   },
   {
     // Cash Reconciliation — daily cash drawer, POS card slips, and transfer balancing
     label: 'Cash Register',
     href: '/clinic/reconciliation',
     icon: '💵',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'finance_manager', 'receptionist'],
+    roles: ['clinic_admin', 'finance_manager', 'receptionist'],
   },
   {
     // Clinical Calculators — drug dosing (mg/ml) and 24h fluid therapy infusion math
     label: 'Calculators',
     href: '/clinic/calculators',
     icon: '🧮',
-    roles: ['super_admin', 'ceo', 'clinic_admin', 'vet', 'vet_tech', 'vet_assistant', 'pharmacist'],
+    roles: ['clinic_admin', 'vet', 'vet_tech', 'vet_assistant', 'pharmacist'],
   },
   {
     // Staff — user management and workforce roles
@@ -266,7 +269,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Audit Log',
     href: '/audit',
     icon: '🛡️',
-    roles: ['super_admin', 'ceo', 'finance_manager'],
+    roles: ['super_admin', 'ceo'],
   },
 ];
 
@@ -284,9 +287,6 @@ export const NAV_ITEMS: NavItem[] = [
  */
 export function getNavItemsForRole(role: UserRole, roles?: UserRole[]): NavItem[] {
   const allUserRoles = roles && roles.length > 0 ? roles : [role];
-  if (allUserRoles.includes('super_admin') || allUserRoles.includes('ceo')) {
-    return NAV_ITEMS;
-  }
   return NAV_ITEMS.filter((item) =>
     item.roles.some((r) => allUserRoles.includes(r))
   );

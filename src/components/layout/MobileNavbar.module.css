@@ -1,0 +1,215 @@
+/* Mobile Top Glassmorphic Navbar */
+.navbar {
+  display: none;
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: 0.85rem;
+  padding-right: 0.85rem;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(9, 57, 97, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(223, 186, 107, 0.35);
+  box-shadow: 0 4px 20px rgba(9, 57, 97, 0.25);
+  z-index: 150;
+  transition: all 0.25s ease-out;
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    display: flex;
+  }
+}
+
+/* Left Group: Menu Trigger + Active Title */
+.leftGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Morphing Menu Trigger Button */
+.menuBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(223, 186, 107, 0.2) 0%, rgba(223, 186, 107, 0.08) 100%);
+  border: 1px solid rgba(223, 186, 107, 0.4);
+  color: #fde68a;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.menuBtn:active {
+  transform: scale(0.94);
+  background: rgba(223, 186, 107, 0.3);
+}
+
+.burger {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  width: 18px;
+  height: 18px;
+}
+
+.burgerLine {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background-color: currentColor;
+  border-radius: 2px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.burgerLineShort {
+  width: 12px;
+  align-self: flex-start;
+}
+
+.menuBtnOpen {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.menuBtnOpen .burgerLine:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.menuBtnOpen .burgerLine:nth-child(2) {
+  opacity: 0;
+  transform: scale(0);
+}
+
+.menuBtnOpen .burgerLine:nth-child(3) {
+  width: 18px;
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+/* Page Title & Context */
+.titleBox {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pageTitle {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.brandSub {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #f59e0b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+/* Right Controls */
+.rightControls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Online/Offline Status Indicator */
+.syncIndicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  position: relative;
+  cursor: pointer;
+}
+
+.syncDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.syncDotOnline {
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+}
+
+.syncDotOffline {
+  background: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+  animation: pulse 1.5s infinite;
+}
+
+.syncBadge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  background: #f59e0b;
+  color: #093961;
+  font-size: 9px;
+  font-weight: 900;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* User Avatar Pill */
+.avatarBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease-out;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.avatarBtn:active {
+  transform: scale(0.92);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}

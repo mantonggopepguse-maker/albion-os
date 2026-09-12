@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { useVetServices } from '@/hooks/use-supabase-data';
 import { createVetService, updateVetService } from '@/lib/data-service';
-import type { VetService } from '@/lib/types';
+import type { VetService, ProcedureMedicationProtocol } from '@/lib/types';
 import styles from './procedures.module.css';
 
 export default function ProceduresPage() {
@@ -24,6 +24,9 @@ export default function ProceduresPage() {
     duration_minutes: '30',
     description: '',
   });
+  const [protocolDrugs, setProtocolDrugs] = useState<ProcedureMedicationProtocol[]>([]);
+  const [postOpNotes, setPostOpNotes] = useState<string>('');
+  const [viewingProtocolService, setViewingProtocolService] = useState<VetService | null>(null);
 
   // Filtered Services
   const filteredServices = useMemo(() => {
@@ -63,6 +66,8 @@ export default function ProceduresPage() {
       duration_minutes: '30',
       description: '',
     });
+    setProtocolDrugs([]);
+    setPostOpNotes('');
     setFormError(null);
     setIsModalOpen(true);
   };
@@ -77,8 +82,27 @@ export default function ProceduresPage() {
       duration_minutes: String(service.duration_minutes || 30),
       description: service.description || '',
     });
+    setProtocolDrugs(service.medication_protocol ? [...service.medication_protocol] : []);
+    setPostOpNotes(service.post_op_notes || '');
     setFormError(null);
     setIsModalOpen(true);
+  };
+
+  const handleAddDrug = () => {
+    setProtocolDrugs([
+      ...protocolDrugs,
+      { drug_name: '', dosage: '', frequency: 'q12h', duration: '5 days', is_alternative: false },
+    ]);
+  };
+
+  const handleUpdateDrug = (index: number, field: keyof ProcedureMedicationProtocol, val: any) => {
+    const next = [...protocolDrugs];
+    next[index] = { ...next[index], [field]: val };
+    setProtocolDrugs(next);
+  };
+
+  const handleRemoveDrug = (index: number) => {
+    setProtocolDrugs(protocolDrugs.filter((_, i) => i !== index));
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -105,6 +129,8 @@ export default function ProceduresPage() {
         price: priceNum,
         duration_minutes: parseInt(formData.duration_minutes, 10) || 30,
         description: formData.description.trim() || null,
+        medication_protocol: protocolDrugs,
+        post_op_notes: postOpNotes.trim() || undefined,
       });
     } else {
       res = await createVetService({
@@ -114,6 +140,8 @@ export default function ProceduresPage() {
         price: priceNum,
         duration_minutes: parseInt(formData.duration_minutes, 10) || 30,
         description: formData.description.trim() || null,
+        medication_protocol: protocolDrugs,
+        post_op_notes: postOpNotes.trim() || undefined,
       });
     }
 
@@ -251,6 +279,7 @@ export default function ProceduresPage() {
                 <th>Category</th>
                 <th>Applicable Species</th>
                 <th>Est. Duration</th>
+                <th>Medication Protocol</th>
                 <th>Description</th>
                 <th style={{ textAlign: 'right' }}>Standard Fee (₦)</th>
                 <th style={{ textAlign: 'right' }}>Action</th>
@@ -259,13 +288,13 @@ export default function ProceduresPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '40px' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '40px' }}>
                     Loading procedures catalog...
                   </td>
                 </tr>
               ) : filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className={styles.emptyState}>
+                  <td colSpan={8} className={styles.emptyState}>
                     No clinical procedures found matching your criteria.
                   </td>
                 </tr>
@@ -286,7 +315,21 @@ export default function ProceduresPage() {
                     <td style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
                       {service.duration_minutes || 30} mins
                     </td>
-                    <td style={{ fontSize: '12px', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td>
+                      {service.medication_protocol && service.medication_protocol.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setViewingProtocolService(service)}
+                          className={styles.protocolPill}
+                          title="View clinical medication protocol"
+                        >
+                          💊 {service.medication_protocol.length} Drug{service.medication_protocol.length > 1 ? 's' : ''}
+                        </button>
+                      ) : (
+                        <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ fontSize: '12px', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {service.description || '—'}
                     </td>
                     <td style={{ textAlign: 'right' }} className={styles.priceCell}>
@@ -393,6 +436,83 @@ export default function ProceduresPage() {
                   </div>
                 </div>
 
+                {/* Medication Protocol Builder */}
+                <div className={styles.formGroup}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ margin: 0, fontWeight: 600 }}>💊 Standard Medication Protocol</label>
+                    <button
+                      type="button"
+                      onClick={handleAddDrug}
+                      className={styles.addDrugBtn}
+                    >
+                      + Add Drug / Alternative
+                    </button>
+                  </div>
+
+                  {protocolDrugs.length === 0 ? (
+                    <div style={{ padding: '12px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', fontSize: '12px', color: '#64748b', textAlign: 'center' }}>
+                      No standard medications configured. Click &quot;+ Add Drug&quot; to prescribe default pre/intra/post-op drugs.
+                    </div>
+                  ) : (
+                    <div className={styles.protocolBuilder}>
+                      {protocolDrugs.map((drug, idx) => (
+                        <div key={idx} className={styles.drugRow}>
+                          <input
+                            type="text"
+                            placeholder="Drug name (e.g. Amoxicillin)"
+                            value={drug.drug_name}
+                            onChange={(e) => handleUpdateDrug(idx, 'drug_name', e.target.value)}
+                            style={{ padding: '6px 8px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+                            required
+                          />
+                          <input
+                            type="text"
+                            placeholder="Dosage (e.g. 10mg/kg)"
+                            value={drug.dosage}
+                            onChange={(e) => handleUpdateDrug(idx, 'dosage', e.target.value)}
+                            style={{ padding: '6px 8px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Freq / Duration (e.g. q12h x 5d)"
+                            value={drug.frequency ? `${drug.frequency}${drug.duration ? ' ' + drug.duration : ''}` : drug.duration || ''}
+                            onChange={(e) => handleUpdateDrug(idx, 'frequency', e.target.value)}
+                            style={{ padding: '6px 8px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateDrug(idx, 'is_alternative', !drug.is_alternative)}
+                              className={`${styles.orToggleBtn} ${drug.is_alternative ? styles.orToggleBtnActive : ''}`}
+                              title="Toggle if this drug is an OR alternative"
+                            >
+                              {drug.is_alternative ? '⚡ OR ALT' : 'REQ'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDrug(idx)}
+                              className={styles.removeDrugBtn}
+                              title="Remove drug"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label>Post-Operative & Recovery Instructions</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Wound monitoring, Elizabethan collar instructions, dietary restrictions..."
+                    value={postOpNotes}
+                    onChange={(e) => setPostOpNotes(e.target.value)}
+                  />
+                </div>
+
                 <div className={styles.formGroup}>
                   <label>Clinical Description & Scope</label>
                   <textarea
@@ -422,6 +542,93 @@ export default function ProceduresPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Protocol Details Modal */}
+      {viewingProtocolService && (
+        <div className={styles.modalBackdrop} onClick={() => setViewingProtocolService(null)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()} style={{ maxWidth: '560px' }}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h2 className={styles.modalTitle} style={{ margin: 0 }}>
+                  💊 Protocol: {viewingProtocolService.name}
+                </h2>
+                <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                  {viewingProtocolService.category.toUpperCase()} • {viewingProtocolService.species} • {viewingProtocolService.duration_minutes || 30} mins
+                </div>
+              </div>
+              <button onClick={() => setViewingProtocolService(null)} className={styles.closeBtn}>
+                ✕
+              </button>
+            </div>
+
+            <div className={styles.modalBody} style={{ gap: '16px' }}>
+              <div>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--color-navy)', marginBottom: '8px' }}>
+                  Standard Medications & Alternatives
+                </h4>
+                {viewingProtocolService.medication_protocol && viewingProtocolService.medication_protocol.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {viewingProtocolService.medication_protocol.map((m, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '10px 14px',
+                          background: m.is_alternative ? '#fffbeb' : '#f8fafc',
+                          border: `1px solid ${m.is_alternative ? '#fde68a' : '#e2e8f0'}`,
+                          borderRadius: '8px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--color-navy)' }}>
+                            {m.drug_name}
+                            {m.is_alternative && (
+                              <span style={{ marginLeft: '8px', fontSize: '10px', background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                OR ALTERNATIVE
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                            Dosage: {m.dosage || 'Standard'} • Frequency: {m.frequency || 'N/A'} {m.duration ? `• Duration: ${m.duration}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--color-text-muted)', fontSize: '13px' }}>
+                    No specific medication protocols recorded.
+                  </div>
+                )}
+              </div>
+
+              {viewingProtocolService.post_op_notes && (
+                <div>
+                  <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--color-navy)', marginBottom: '6px' }}>
+                    Post-Operative & Care Notes
+                  </h4>
+                  <div style={{ padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', fontSize: '12px', color: '#166534', lineHeight: 1.5 }}>
+                    {viewingProtocolService.post_op_notes}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className={styles.modalFooter}>
+              <button
+                type="button"
+                onClick={() => setViewingProtocolService(null)}
+                className={styles.submitBtn}
+                style={{ width: '100%' }}
+              >
+                Close Protocol
+              </button>
+            </div>
           </div>
         </div>
       )}

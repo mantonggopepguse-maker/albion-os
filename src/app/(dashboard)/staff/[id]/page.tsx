@@ -17,6 +17,7 @@ import {
   getPerformanceReviewsForUser,
   clockIn,
   clockOut,
+  updateStaffUser,
 } from '@/lib/data-service';
 import type {
   LeaveType,
@@ -27,8 +28,27 @@ import type {
   EmployeeDocument,
   PerformanceTarget,
   PerformanceReview,
+  UserRole,
 } from '@/lib/types';
 import styles from './staff-detail.module.css';
+
+const ALL_ROLES: { value: UserRole; label: string }[] = [
+  { value: 'sales_rep', label: 'Sales Representative' },
+  { value: 'finance_manager', label: 'Finance Manager' },
+  { value: 'inventory_manager', label: 'Inventory Manager' },
+  { value: 'super_admin', label: 'Super Admin' },
+  { value: 'ceo', label: 'Chief Executive Officer' },
+  { value: 'clinic_admin', label: 'Clinic Admin' },
+  { value: 'vet', label: 'Veterinarian' },
+  { value: 'vet_tech', label: 'Vet Technician' },
+  { value: 'vet_assistant', label: 'Vet Assistant' },
+  { value: 'receptionist', label: 'Receptionist' },
+  { value: 'regional_manager', label: 'Regional Manager' },
+  { value: 'security', label: 'Security' },
+  { value: 'lab_scientist', label: 'Lab Scientist' },
+  { value: 'pharmacist', label: 'Pharmacist' },
+  { value: 'support_staff', label: 'Support Staff' },
+];
 
 function fmt(n: number): string {
   return '₦' + n.toLocaleString('en-NG');
@@ -48,7 +68,7 @@ export default function StaffDetailPage() {
   const router = useRouter();
   const userId = params.id as string;
   const { user: currentUser } = useAuth();
-  const { users, loading: usersLoading } = useUsers();
+  const { users, loading: usersLoading, refetch: refetchUsers } = useUsers();
   const { locations } = useLocations();
   const {
     leaveRequests: allLeaveRequests,
@@ -60,6 +80,11 @@ export default function StaffDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>('Salary');
   const [leaveModal, setLeaveModal] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ leave_type: 'annual' as LeaveType, start_date: '', end_date: '', reason: '' });
+  const [roleModal, setRoleModal] = useState(false);
+  const [editPrimaryRole, setEditPrimaryRole] = useState<UserRole>('sales_rep');
+  const [editRoles, setEditRoles] = useState<UserRole[]>([]);
+  const [editLocationId, setEditLocationId] = useState<string>('');
+  const [savingRoles, setSavingRoles] = useState(false);
   const [clockMsg, setClockMsg] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [confirmReview, setConfirmReview] = useState<{ id: string; status: 'approved' | 'rejected' } | null>(null);
@@ -69,6 +94,26 @@ export default function StaffDetailPage() {
   const isCeo = hasRole(currentUser, 'ceo') || hasRole(currentUser, 'super_admin');
   const isOwnProfile = currentUser?.id === userId;
   const isReviewer = isCeo;
+
+  async function handleSaveRoles(e: React.FormEvent) {
+    e.preventDefault();
+    if (!staff) return;
+    setSavingRoles(true);
+    const combinedRoles = Array.from(new Set([editPrimaryRole, ...editRoles]));
+    const result = await updateStaffUser(staff.id, {
+      role: editPrimaryRole,
+      roles: combinedRoles,
+      location_id: editLocationId || null,
+    });
+    setSavingRoles(false);
+    if (result.success) {
+      setRoleModal(false);
+      await refetchUsers();
+      setToast({ message: 'Staff roles and permissions updated successfully', type: 'success' });
+    } else {
+      setToast({ message: result.error || 'Failed to update roles', type: 'error' });
+    }
+  }
 
   const [detailsMap, setDetailsMap] = useState<Record<string, {
     salary?: Salary;
@@ -255,6 +300,34 @@ export default function StaffDetailPage() {
             <span className={`${styles.statusBadge} ${staff.is_active === false ? styles.statusSuspended : styles.statusActive}`}>
               {staff.is_active === false ? 'Suspended' : 'Active'}
             </span>
+            {isCeo && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditPrimaryRole(staff.role);
+                  setEditRoles(staff.roles && staff.roles.length > 0 ? staff.roles : [staff.role]);
+                  setEditLocationId(staff.location_id || '');
+                  setRoleModal(true);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 14px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  color: '#ffffff',
+                  background: 'var(--color-navy)',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.15)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                ⚙️ Edit Roles & Permissions
+              </button>
+            )}
           </div>
         </div>
 
@@ -727,6 +800,160 @@ export default function StaffDetailPage() {
           </div>
         </div>
       </Modal>
+
+      {/* ── Edit Roles & Permissions Modal (Super Admin / CEO) ── */}
+      {roleModal && (
+        <Modal
+          isOpen={roleModal}
+          onClose={() => setRoleModal(false)}
+          title={`Edit Roles & Location — ${staff.full_name}`}
+        >
+          <form onSubmit={handleSaveRoles} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '0.5rem 0' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-navy)' }}>
+                Primary Operational Role
+              </label>
+              <select
+                value={editPrimaryRole}
+                onChange={(e) => {
+                  const newRole = e.target.value as UserRole;
+                  setEditPrimaryRole(newRole);
+                  setEditRoles((prev) => Array.from(new Set([newRole, ...prev])));
+                }}
+                style={{
+                  padding: '0.625rem 0.875rem',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.875rem',
+                  fontFamily: 'inherit',
+                  background: '#fff',
+                }}
+              >
+                {ALL_ROLES.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-navy)' }}>
+                Concurrent / Additional Roles ({editRoles.length})
+              </label>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                Select all roles this staff member is authorized to perform
+              </span>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+                  gap: '0.5rem',
+                  maxHeight: '180px',
+                  overflowY: 'auto',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '0.75rem',
+                  background: '#f8fafc',
+                }}
+              >
+                {ALL_ROLES.map((r) => {
+                  const isChecked = editRoles.includes(r.value);
+                  const isPrimary = editPrimaryRole === r.value;
+                  return (
+                    <label
+                      key={r.value}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '0.8rem',
+                        cursor: isPrimary ? 'not-allowed' : 'pointer',
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        background: isChecked ? 'rgba(9, 57, 97, 0.08)' : 'transparent',
+                        fontWeight: isChecked ? 600 : 400,
+                        color: isChecked ? 'var(--color-navy)' : 'var(--color-text)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        disabled={isPrimary}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setEditRoles((prev) =>
+                            checked ? [...prev, r.value] : prev.filter((val) => val !== r.value)
+                          );
+                        }}
+                        style={{ accentColor: 'var(--color-navy)' }}
+                      />
+                      <span>{r.label} {isPrimary && '(Primary)'}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-navy)' }}>
+                Facility / Branch Location
+              </label>
+              <select
+                value={editLocationId}
+                onChange={(e) => setEditLocationId(e.target.value)}
+                style={{
+                  padding: '0.625rem 0.875rem',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.875rem',
+                  fontFamily: 'inherit',
+                  background: '#fff',
+                }}
+              >
+                <option value="">All Locations / Floating</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name} ({loc.type})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => setRoleModal(false)}
+                style={{
+                  padding: '0.6rem 1.2rem',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)',
+                  background: '#fff',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: '0.875rem',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingRoles}
+                style={{
+                  padding: '0.6rem 1.2rem',
+                  borderRadius: 'var(--radius-md)',
+                  border: 'none',
+                  background: 'var(--color-navy)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                }}
+              >
+                {savingRoles ? 'Saving Changes...' : 'Save Roles & Permissions'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />

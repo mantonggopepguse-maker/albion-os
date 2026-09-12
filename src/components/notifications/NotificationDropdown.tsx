@@ -72,7 +72,8 @@ export default function NotificationDropdown() {
             top: '100%',
             right: 0,
             marginTop: 8,
-            width: 360,
+            width: 'min(360px, calc(100vw - 24px))',
+            maxWidth: 'calc(100vw - 24px)',
             maxHeight: 480,
             overflowY: 'auto',
             background: '#fff',
@@ -159,7 +160,10 @@ export default function NotificationDropdown() {
                 {n.link && (
                   <Link
                     href={n.link}
-                    onClick={() => setOpen(false)}
+                    onClick={() => {
+                      dismiss(n.id);
+                      setOpen(false);
+                    }}
                     style={{
                       display: 'inline-block',
                       marginTop: 4,

@@ -319,7 +319,9 @@ export default function ChatPage() {
   useEffect(() => {
     if (roleParam && !selectedContactId && contacts.length > 0) {
       const match = contacts.find((c) => c.role === roleParam);
-      if (match) setSelectedContactId(match.id);
+      if (match) {
+        queueMicrotask(() => setSelectedContactId(match.id));
+      }
     }
   }, [roleParam, selectedContactId, contacts]);
 

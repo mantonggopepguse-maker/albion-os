@@ -36,6 +36,7 @@ import type {
   LabOrder, HospitalizationRecord, ICUVitalEntry, SurgeryRecord, CashReconciliation,
   BranchExpense, AuditLog, AuditCategory,
   ClinicShift, PatientReminder, ReminderStatus,
+  StaffRequest, StaffRequestType, StaffRequestStatus, Announcement,
 } from '@/lib/types';
 import { transitionInvoice as dataTransitionInvoice } from '@/lib/data-service';
 import {
@@ -59,6 +60,7 @@ import {
   MOCK_HOSPITALIZATIONS,
   MOCK_SURGERIES,
   MOCK_CASH_RECONCILIATIONS,
+  MOCK_CHAT_MESSAGES,
 } from '@/lib/mock-data';
 
 const USE_MOCK_DATA = isSupabaseMockMode() || !isSupabaseConfigured();
@@ -167,6 +169,25 @@ export function useCustomers(fetchInactive: boolean = false) {
   }, [refetch]);
 
   const addCustomer = useCallback(async (input: AddCustomerInput) => {
+    if (USE_MOCK_DATA) {
+      const mockCust: Customer = {
+        id: `cust-mock-${Date.now()}`,
+        name: input.name,
+        business_name: input.business_name,
+        phone: input.phone,
+        email: input.email || null,
+        address: input.address,
+        state: input.state,
+        credit_limit: input.credit_limit,
+        outstanding_balance: 0,
+        location_id: input.location_id,
+        is_active: true,
+      };
+      MOCK_CUSTOMERS.unshift(mockCust);
+      await refetch();
+      return { success: true, data: mockCust };
+    }
+
     const { data: { user } } = await getSupabase().auth.getUser();
     const { data, error } = await getSupabase()
       .from('customers')
@@ -200,6 +221,9 @@ export interface CreateInvoiceInput {
   customer_id: string;
   items: InvoiceLineInput[];
   due_date: string;
+  vat_rate?: number;
+  discount_type?: 'percent' | 'fixed';
+  discount_value?: number;
 }
 
 export function useInvoices() {
@@ -219,7 +243,7 @@ export function useInvoices() {
       }));
       setInvoices(mapped as Invoice[]);
     } else if (USE_MOCK_DATA) {
-      setInvoices(MOCK_INVOICES);
+      setInvoices([...MOCK_INVOICES]);
     } else {
       setInvoices([]);
     }
@@ -250,13 +274,51 @@ export function useInvoices() {
     });
 
     const subtotal = items.reduce((sum, i) => sum + i.total, 0);
-    const vatAmount = Math.round(subtotal * 0.075);
-    const total = subtotal + vatAmount;
+    const vatRate = typeof input.vat_rate === 'number' ? input.vat_rate : 7.5;
+    const vatAmount = Math.round(subtotal * (vatRate / 100));
+
+    let discountAmount = 0;
+    if (input.discount_type === 'percent' && input.discount_value) {
+      discountAmount = Math.round(subtotal * (input.discount_value / 100));
+    } else if (input.discount_type === 'fixed' && input.discount_value) {
+      discountAmount = Math.min(subtotal, Math.round(input.discount_value));
+    }
+
+    const total = Math.max(0, subtotal + vatAmount - discountAmount);
 
     /* Generate invoice number: INV-YYYY-XXXXX (timestamp-based, no race) */
     const year = new Date().getFullYear();
     const seq = Date.now().toString(36).toUpperCase().slice(-5);
     const invoiceNumber = `INV-${year}-${seq}`;
+
+    if (USE_MOCK_DATA) {
+      const mockInvId = `inv-mock-${Date.now()}`;
+      const lineItems: InvoiceItem[] = items.map((it, idx) => ({
+        id: `inv-item-${Date.now()}-${idx}`,
+        ...it,
+      }));
+      const mockInv: Invoice = {
+        id: mockInvId,
+        invoice_number: invoiceNumber,
+        customer_id: input.customer_id,
+        sales_rep_id: userId,
+        location_id: locationId,
+        subtotal,
+        vat: vatAmount,
+        vat_rate: vatRate,
+        discount_type: input.discount_type,
+        discount_value: input.discount_value,
+        discount_amount: discountAmount,
+        total,
+        status: 'draft',
+        created_at: new Date().toISOString(),
+        due_date: input.due_date,
+        items: lineItems,
+      };
+      MOCK_INVOICES.unshift(mockInv);
+      await refetch();
+      return { success: true, data: mockInv };
+    }
 
     /* Insert the invoice header */
     const { data: invData, error: invError } = await getSupabase()
@@ -268,6 +330,10 @@ export function useInvoices() {
         location_id: locationId,
         subtotal,
         vat: vatAmount,
+        vat_rate: vatRate,
+        discount_type: input.discount_type,
+        discount_value: input.discount_value,
+        discount_amount: discountAmount,
         total,
         status: 'draft',
         due_date: input.due_date,
@@ -533,6 +599,17 @@ export function useChatMessages(currentUserId: string | null, selectedUserId: st
       return;
     }
 
+    if (USE_MOCK_DATA) {
+      const thread = MOCK_CHAT_MESSAGES.filter(
+        (m) =>
+          (m.sender_id === currentUserId && m.receiver_id === selectedUserId) ||
+          (m.sender_id === selectedUserId && m.receiver_id === currentUserId)
+      ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      setMessages([...thread]);
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await getSupabase()
       .from('chat_messages')
       .select('*')
@@ -542,7 +619,16 @@ export function useChatMessages(currentUserId: string | null, selectedUserId: st
       )
       .order('created_at', { ascending: true });
 
-    if (!error && data) setMessages(data as ChatMessage[]);
+    if (!error && data) {
+      setMessages(data as ChatMessage[]);
+    } else {
+      const thread = MOCK_CHAT_MESSAGES.filter(
+        (m) =>
+          (m.sender_id === currentUserId && m.receiver_id === selectedUserId) ||
+          (m.sender_id === selectedUserId && m.receiver_id === currentUserId)
+      ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      setMessages([...thread]);
+    }
     setLoading(false);
   }, [currentUserId, selectedUserId]);
 
@@ -551,9 +637,43 @@ export function useChatMessages(currentUserId: string | null, selectedUserId: st
     return () => window.clearTimeout(timeoutId);
   }, [refetch]);
 
-  // Realtime subscription: listen for new messages in the current thread
+  // Local window event bus for instant messaging updates
   useEffect(() => {
     if (!currentUserId || !selectedUserId) return;
+
+    const handleNewMessage = (e: Event) => {
+      const customEvent = e as CustomEvent<ChatMessage>;
+      const newMsg = customEvent.detail;
+      if (
+        (newMsg.sender_id === currentUserId && newMsg.receiver_id === selectedUserId) ||
+        (newMsg.sender_id === selectedUserId && newMsg.receiver_id === currentUserId)
+      ) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+      }
+    };
+
+    const handleReadMessage = (e: Event) => {
+      const customEvent = e as CustomEvent<{ unreadIds: string[] }>;
+      const { unreadIds } = customEvent.detail;
+      setMessages((prev) =>
+        prev.map((m) => (unreadIds.includes(m.id) ? { ...m, is_read: true } : m))
+      );
+    };
+
+    window.addEventListener('albion:chat-message', handleNewMessage);
+    window.addEventListener('albion:chat-read', handleReadMessage);
+    return () => {
+      window.removeEventListener('albion:chat-message', handleNewMessage);
+      window.removeEventListener('albion:chat-read', handleReadMessage);
+    };
+  }, [currentUserId, selectedUserId]);
+
+  // Realtime subscription: listen for new messages in the current thread (Supabase mode)
+  useEffect(() => {
+    if (!currentUserId || !selectedUserId || USE_MOCK_DATA) return;
 
     const supabase = getSupabase();
     const channel = supabase
@@ -585,9 +705,7 @@ export function useChatMessages(currentUserId: string | null, selectedUserId: st
     return () => { supabase.removeChannel(channel); };
   }, [currentUserId, selectedUserId]);
 
-  // Auto-mark received messages as read when viewing the thread.
-  // `messages` is a dep so messages that arrive via the realtime
-  // subscription are also marked read while the thread is open.
+  // Auto-mark received messages as read when viewing the thread
   useEffect(() => {
     if (!currentUserId || !selectedUserId) return;
 
@@ -598,31 +716,63 @@ export function useChatMessages(currentUserId: string | null, selectedUserId: st
     if (unread.length === 0) return;
 
     const unreadIds = unread.map((m) => m.id);
-    getSupabase()
-      .from('chat_messages')
-      .update({ is_read: true })
-      .in('id', unreadIds)
-      .then(() => {
-        setMessages((prev) =>
-          prev.map((m) => (unreadIds.includes(m.id) ? { ...m, is_read: true } : m))
-        );
-      });
+
+    // Sync in-memory mock messages
+    MOCK_CHAT_MESSAGES.forEach((m) => {
+      if (unreadIds.includes(m.id)) {
+        m.is_read = true;
+      }
+    });
+
+    queueMicrotask(() => {
+      setMessages((prev) =>
+        prev.map((m) => (unreadIds.includes(m.id) ? { ...m, is_read: true } : m))
+      );
+    });
+
+    window.dispatchEvent(new CustomEvent('albion:chat-read', { detail: { unreadIds } }));
+
+    if (!USE_MOCK_DATA) {
+      getSupabase()
+        .from('chat_messages')
+        .update({ is_read: true })
+        .in('id', unreadIds);
+    }
   }, [currentUserId, selectedUserId, messages]);
 
   const sendMessage = useCallback(async (content: string, attachment?: { url: string; type: string }) => {
     if (!selectedUserId || !currentUserId) return { success: false, error: 'No recipient' };
 
-    const { error } = await getSupabase()
-      .from('chat_messages')
-      .insert({
-        sender_id: currentUserId,
-        receiver_id: selectedUserId,
-        content,
-        attachment_url: attachment?.url || null,
-        attachment_type: attachment?.type || null,
-      });
+    const newMsg: ChatMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      sender_id: currentUserId,
+      receiver_id: selectedUserId,
+      content,
+      attachment_url: attachment?.url || null,
+      attachment_type: attachment?.type || null,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    };
 
-    if (error) return { success: false, error: error.message };
+    MOCK_CHAT_MESSAGES.push(newMsg);
+    window.dispatchEvent(new CustomEvent('albion:chat-message', { detail: newMsg }));
+
+    if (!USE_MOCK_DATA) {
+      const { error } = await getSupabase()
+        .from('chat_messages')
+        .insert({
+          sender_id: currentUserId,
+          receiver_id: selectedUserId,
+          content,
+          attachment_url: attachment?.url || null,
+          attachment_type: attachment?.type || null,
+        });
+
+      if (error) {
+        console.warn('Supabase chat sync notice:', error.message);
+      }
+    }
+
     await refetch();
     return { success: true };
   }, [currentUserId, selectedUserId, refetch]);
@@ -644,13 +794,30 @@ export function useMyMessages(userId: string | null) {
       setLoading(false);
       return;
     }
+
+    if (USE_MOCK_DATA) {
+      const list = MOCK_CHAT_MESSAGES.filter(
+        (m) => m.sender_id === userId || m.receiver_id === userId
+      ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setAllMessages([...list]);
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await getSupabase()
       .from('chat_messages')
       .select('*')
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .order('created_at', { ascending: false });
 
-    if (!error && data) setAllMessages(data as ChatMessage[]);
+    if (!error && data) {
+      setAllMessages(data as ChatMessage[]);
+    } else {
+      const list = MOCK_CHAT_MESSAGES.filter(
+        (m) => m.sender_id === userId || m.receiver_id === userId
+      ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setAllMessages([...list]);
+    }
     setLoading(false);
   }, [userId]);
 
@@ -659,11 +826,40 @@ export function useMyMessages(userId: string | null) {
     return () => window.clearTimeout(timeoutId);
   }, [refetch]);
 
-  // Realtime subscription: keep contact-list previews and unread badges live.
-  // RLS restricts each user to their own conversations, so the feed is
-  // filtered client-side to messages involving this user.
+  // Local window event bus for live updates across components
   useEffect(() => {
     if (!userId) return;
+
+    const handleNewMessage = (e: Event) => {
+      const customEvent = e as CustomEvent<ChatMessage>;
+      const newMsg = customEvent.detail;
+      if (newMsg.sender_id === userId || newMsg.receiver_id === userId) {
+        setAllMessages((prev) => {
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          return [newMsg, ...prev];
+        });
+      }
+    };
+
+    const handleReadMessage = (e: Event) => {
+      const customEvent = e as CustomEvent<{ unreadIds: string[] }>;
+      const { unreadIds } = customEvent.detail;
+      setAllMessages((prev) =>
+        prev.map((m) => (unreadIds.includes(m.id) ? { ...m, is_read: true } : m))
+      );
+    };
+
+    window.addEventListener('albion:chat-message', handleNewMessage);
+    window.addEventListener('albion:chat-read', handleReadMessage);
+    return () => {
+      window.removeEventListener('albion:chat-message', handleNewMessage);
+      window.removeEventListener('albion:chat-read', handleReadMessage);
+    };
+  }, [userId]);
+
+  // Realtime subscription: keep contact-list previews and unread badges live in Supabase mode
+  useEffect(() => {
+    if (!userId || USE_MOCK_DATA) return;
 
     const supabase = getSupabase();
     const channel = supabase
@@ -1230,8 +1426,25 @@ export function useClinicAppointments() {
     if (!error && data && data.length > 0) {
       setAppointments(data as AppointmentWithRelations[]);
     } else {
-      const { getAppointments } = await import('@/lib/data-service');
-      setAppointments(await getAppointments());
+      const { getAppointments, getPatients, getCustomers } = await import('@/lib/data-service');
+      const [rawAppts, rawPatients, rawCustomers] = await Promise.all([
+        getAppointments(),
+        getPatients(),
+        getCustomers(),
+      ]);
+      const patientMap = new Map(rawPatients.map((p) => [p.id, p]));
+      const customerMap = new Map(rawCustomers.map((c) => [c.id, c]));
+
+      const hydrated: AppointmentWithRelations[] = rawAppts.map((a) => {
+        const p = patientMap.get(a.patient_id);
+        const o = customerMap.get(a.owner_id);
+        return {
+          ...a,
+          patient: p ? { id: p.id, name: p.name, species: p.species, weight_kg: p.weight_kg } : undefined,
+          owner: o ? { id: o.id, full_name: o.name || o.business_name || null, name: o.name, phone: o.phone } : undefined,
+        };
+      });
+      setAppointments(hydrated);
     }
     setLoading(false);
   }, []);
@@ -1686,5 +1899,97 @@ export function usePatientReminders(status?: ReminderStatus) {
 
   return { reminders, loading, refetch };
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   STAFF REQUESTS PORTAL
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useStaffRequests(userId?: string, userRole?: any) {
+  const [requests, setRequests] = useState<StaffRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const { getStaffRequests } = await import('@/lib/data-service');
+    const data = await getStaffRequests(userId, userRole);
+    setRequests(data);
+    setLoading(false);
+  }, [userId, userRole]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  const createRequest = useCallback(async (input: any) => {
+    const { createStaffRequest } = await import('@/lib/data-service');
+    const res = await createStaffRequest(input);
+    if (res.success) await refetch();
+    return res;
+  }, [refetch]);
+
+  const updateStatus = useCallback(async (id: string, status: StaffRequestStatus, reviewerId: string, reviewerName: string, reviewNotes?: string) => {
+    const { updateStaffRequestStatus } = await import('@/lib/data-service');
+    const res = await updateStaffRequestStatus(id, status, reviewerId, reviewerName, reviewNotes);
+    if (res.success) await refetch();
+    return res;
+  }, [refetch]);
+
+  return { requests, loading, refetch, createRequest, updateStatus };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPANY & CLINIC ANNOUNCEMENTS
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useAnnouncements(userRole?: any, locationId?: string | null) {
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const stored = localStorage.getItem('albion_dismissed_announcements');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    const { getAnnouncements } = await import('@/lib/data-service');
+    const data = await getAnnouncements(userRole, locationId);
+    setAnnouncements(data);
+    setLoading(false);
+  }, [userRole, locationId]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  const createNotice = useCallback(async (input: any) => {
+    const { createAnnouncement } = await import('@/lib/data-service');
+    const res = await createAnnouncement(input);
+    if (res.success) await refetch();
+    return res;
+  }, [refetch]);
+
+  const dismissNotice = useCallback((id: string) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        localStorage.setItem('albion_dismissed_announcements', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const activeAnnouncements = announcements.filter((a) => !dismissedIds.has(a.id));
+
+  return { announcements: activeAnnouncements, allAnnouncements: announcements, loading, refetch, createNotice, dismissNotice };
+}
+
 
 

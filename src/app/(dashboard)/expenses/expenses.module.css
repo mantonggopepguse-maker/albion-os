@@ -432,6 +432,127 @@
   color: var(--color-text-muted);
 }
 
+.viewTabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: var(--space-2);
+}
+
+.viewTabBtn {
+  padding: 8px 16px;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.viewTabBtn:hover {
+  color: var(--color-navy);
+  background: rgba(10, 37, 64, 0.05);
+}
+
+.viewTabBtnActive {
+  color: var(--color-navy);
+  background: white;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.groupCard {
+  background: white;
+  border-radius: var(--radius-xl);
+  border: 1px solid #e2e8f0;
+  margin-bottom: var(--space-4);
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.groupHeader {
+  padding: var(--space-4) var(--space-5);
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  border-bottom: 1px solid #edf2f7;
+  user-select: none;
+}
+
+.groupHeader:hover {
+  background: #f1f5f9;
+}
+
+.groupTitle {
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--color-navy);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.groupSubtotal {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--font-size-sm);
+}
+
+.receiptThumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+}
+
+.receiptBtn {
+  padding: 4px 10px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-navy);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.receiptBtn:hover {
+  background: #e2e8f0;
+}
+
+.uploadPreviewWrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 8px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
+}
+
+.uploadPreviewImg {
+  max-width: 120px;
+  max-height: 80px;
+  object-fit: contain;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+}
+
 @media (max-width: 1024px) {
   .statsGrid {
     grid-template-columns: repeat(2, 1fr);
@@ -451,5 +572,9 @@
   }
   .formRow {
     grid-template-columns: 1fr;
+  }
+  .viewTabs {
+    overflow-x: auto;
+    white-space: nowrap;
   }
 }

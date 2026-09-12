@@ -21,10 +21,11 @@
 /* ────────────────────────────────────────────
    Dependencies
    ──────────────────────────────────────────── */
+import { useState, useEffect } from 'react';
 import { useAuth, getRoleLabel, getRoleColor } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
+import { getOfflineQueue } from '@/lib/offline-sync';
 import LocaleSwitcher from '@/components/i18n/LocaleSwitcher';
-import { NotificationsProvider } from '@/lib/notifications-context';
 import NotificationDropdown from '@/components/notifications/NotificationDropdown';
 import styles from './Topbar.module.css';
 
@@ -43,6 +44,43 @@ import styles from './Topbar.module.css';
 export default function Topbar({ title }: { title?: string }) {
   const { user, logout } = useAuth();
   const router = useRouter();
+
+  // ── Offline sync state (hooks unconditionally at the top) ──
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const checkQueue = () => {
+      try {
+        const q = getOfflineQueue();
+        setPendingSyncCount(q.length);
+      } catch {}
+    };
+
+    checkQueue();
+
+    const handleOnline = () => { setIsOnline(true); checkQueue(); };
+    const handleOffline = () => { setIsOnline(false); checkQueue(); };
+    const handleStatus = (e: Event) => {
+      const custom = e as CustomEvent<{ count?: number }>;
+      setPendingSyncCount(custom.detail?.count || 0);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('albion:sync-status', handleStatus);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('albion:sync-status', handleStatus);
+    };
+  }, []);
 
   // Guard: render nothing if there's no authenticated user.
   if (!user) return null;
@@ -73,6 +111,17 @@ export default function Topbar({ title }: { title?: string }) {
     ? user.roles.map((r) => getRoleLabel(r)).join(' · ')
     : getRoleLabel(user.role);
 
+  const handleManualSync = async () => {
+    setSyncing(true);
+    try {
+      const { syncPendingMutations } = await import('@/lib/offline-sync');
+      const res = await syncPendingMutations();
+      setPendingSyncCount(res.remaining);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <header className={styles.topbar}>
 
@@ -81,14 +130,56 @@ export default function Topbar({ title }: { title?: string }) {
         {title && <h1 className={styles.title}>{title}</h1>}
       </div>
 
-      {/* ── Right section: Locale Switcher + Notifications + User Menu ── */}
+      {/* ── Right section: Locale Switcher + Sync + Notifications + User Menu ── */}
       <div className={styles.right}>
+
+        {/* Network & Sync indicator */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
+          {!isOnline || pendingSyncCount > 0 ? (
+            <button
+              onClick={handleManualSync}
+              disabled={syncing}
+              title={isOnline ? `${pendingSyncCount} pending offline changes. Click to sync.` : 'Offline mode active.'}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 8px',
+                borderRadius: 'var(--radius-full)',
+                background: isOnline ? 'rgba(245, 158, 11, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                color: isOnline ? '#b45309' : '#b91c1c',
+                border: `1px solid ${isOnline ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                cursor: 'pointer',
+              }}
+            >
+              <span>{isOnline ? '🟠' : '🔴'}</span>
+              <span>{isOnline ? `${pendingSyncCount} pending` : 'Offline'}</span>
+              <span style={{ transform: syncing ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }}>🔄</span>
+            </button>
+          ) : (
+            <span
+              title="System connected and synchronized"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 8px',
+                borderRadius: 'var(--radius-full)',
+                background: 'rgba(34, 197, 94, 0.1)',
+                color: '#15803d',
+                border: '1px solid rgba(34, 197, 94, 0.2)',
+                fontSize: '0.7rem',
+              }}
+            >
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+              Live
+            </span>
+          )}
+        </div>
 
         <LocaleSwitcher />
 
-        <NotificationsProvider>
-          <NotificationDropdown />
-        </NotificationsProvider>
+        <NotificationDropdown />
 
         {/* User Menu
             Displays the authenticated user's avatar (colour-coded by

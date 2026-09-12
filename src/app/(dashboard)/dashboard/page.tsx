@@ -27,14 +27,18 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Topbar from '@/components/layout/Topbar';
+import AnnouncementBanner from '@/components/ui/AnnouncementBanner';
+import Modal from '@/components/ui/Modal';
+import { applyCompensationAdjustment } from '@/lib/data-service';
 import {
   useInvoices, usePayments, useInventory,
   useProducts, useCustomers, useUsers, useLocations, useStockMovements,
-  useClinicPatients, useClinicAppointments, useClinicQueue, useClinicTreatments,
-  useExpenses,
+  useClinicPatients, useClinicAppointments, useClinicTreatments,
+  useExpenses, useCashReconciliations,
   findProductById, findCustomerById, findUserById, findLocationById,
 } from '@/hooks/use-supabase-data';
 import { getRoleLabel } from '@/lib/navigation';
@@ -135,6 +139,7 @@ function UnifiedSuperAdminDashboard() {
   const { expenses } = useExpenses();
   const { treatments } = useClinicTreatments();
   const { patients } = useClinicPatients();
+  const { reconciliations } = useCashReconciliations();
 
   /* ── Compute Executive KPIs & Operational Summaries ── */
   const stats = useMemo(() => {
@@ -186,7 +191,7 @@ function UnifiedSuperAdminDashboard() {
 
     const repAllocationsValue = repSummaries.reduce((sum, r) => sum + r.allocatedValue, 0);
 
-    // 5. Clinic Network Breakdown & Stock Allocations
+    // 5. Clinic Network Breakdown & Stock Allocations (100% reconciled with clinic views)
     const clinicLocations = locations.filter((l) => l.type === 'clinic');
     const clinicSummaries = clinicLocations.map((clinic) => {
       const clinicItems = inventory.filter((item) => item.location_id === clinic.id);
@@ -196,15 +201,17 @@ function UnifiedSuperAdminDashboard() {
         return sum + (product ? product.unit_price * item.quantity : 0);
       }, 0);
 
+      const branchReconciliations = reconciliations.filter((r) => r.location_id === clinic.id);
+      const branchTx = treatments.filter((t) => t.location_id === clinic.id);
+      const branchRevenue =
+        branchReconciliations.reduce((sum, r) => sum + (r.total_actual || 0), 0) +
+        branchTx.reduce((sum, t) => sum + (t.total_cost || 0), 0);
+
       const branchExpenses = expenses.filter((e) => e.location_id === clinic.id);
       const totalBranchExpenses = branchExpenses.reduce((sum, e) => sum + e.amount, 0);
+      const netMargin = branchRevenue - totalBranchExpenses;
 
       const branchPatients = patients.filter((p) => p.location_id === clinic.id);
-      const branchCaseCount = branchPatients.length > 0 ? branchPatients.length : 12;
-      const estimatedClinicRevenue = Math.max(
-        branchCaseCount * 45000,
-        1850000
-      );
 
       return {
         id: clinic.id,
@@ -213,8 +220,9 @@ function UnifiedSuperAdminDashboard() {
         stockUnits,
         stockValue: stockVal,
         expenses: totalBranchExpenses,
-        revenue: estimatedClinicRevenue,
-        treatmentCount: branchCaseCount,
+        revenue: branchRevenue,
+        netMargin,
+        treatmentCount: branchTx.length > 0 ? branchTx.length : branchPatients.length,
       };
     });
 
@@ -364,18 +372,18 @@ function UnifiedSuperAdminDashboard() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/inventory')}>
+            <Link href="/inventory" prefetch={true} className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }}>
               <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>📦</span>
               <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Allocate Stock</span>
-            </button>
-            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/invoices')}>
+            </Link>
+            <Link href="/invoices" prefetch={true} className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }}>
               <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>🧾</span>
               <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Invoices</span>
-            </button>
-            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/staff')}>
+            </Link>
+            <Link href="/staff" prefetch={true} className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }}>
               <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>👥</span>
               <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Sales Team</span>
-            </button>
+            </Link>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -383,7 +391,7 @@ function UnifiedSuperAdminDashboard() {
               <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No sales reps found</p>
             ) : (
               stats.repSummaries.map((rep) => (
-                <div key={rep.id} className={styles.invoiceItem} style={{ padding: '12px 14px' }}>
+                <Link key={rep.id} href={`/staff/${rep.id}`} prefetch={true} className={styles.invoiceItem} style={{ padding: '12px 14px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-navy)' }}>
@@ -405,13 +413,13 @@ function UnifiedSuperAdminDashboard() {
                       Receivables: {fmt(rep.receivables)}
                     </span>
                   </div>
-                </div>
+                </Link>
               ))
             )}
           </div>
         </div>
 
-        {/* Column 2: Veterinary Clinic Network Performance (NO QUEUES) */}
+        {/* Column 2: Veterinary Clinic Network Performance (Reconciled with Clinic Detail) */}
         <div className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
@@ -426,18 +434,18 @@ function UnifiedSuperAdminDashboard() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/clinic')}>
+            <Link href="/clinic" prefetch={true} className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }}>
               <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>🏥</span>
               <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>All Clinics</span>
-            </button>
-            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/expenses')}>
+            </Link>
+            <Link href="/expenses" prefetch={true} className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }}>
               <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>📉</span>
               <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Expenses</span>
-            </button>
-            <button className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }} onClick={() => router.push('/clinic/procedures')}>
-              <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>📋</span>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Tariff Catalog</span>
-            </button>
+            </Link>
+            <Link href="/inventory" prefetch={true} className={styles.actionBtn} style={{ padding: '8px', minHeight: 'auto' }}>
+              <span className={styles.actionIcon} style={{ width: '26px', height: '26px', fontSize: '13px' }}>📦</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Clinic Stock</span>
+            </Link>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -445,7 +453,7 @@ function UnifiedSuperAdminDashboard() {
               <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No clinic facilities found</p>
             ) : (
               stats.clinicSummaries.map((clinic) => (
-                <div key={clinic.id} className={styles.invoiceItem} style={{ padding: '12px 14px' }}>
+                <Link key={clinic.id} href={`/clinic/${clinic.id}`} prefetch={true} className={styles.invoiceItem} style={{ padding: '12px 14px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-navy)' }}>
@@ -459,18 +467,21 @@ function UnifiedSuperAdminDashboard() {
                       Allocated Stock: <strong style={{ color: 'var(--color-navy)' }}>{clinic.stockUnits} units</strong> ({fmt(clinic.stockValue)})
                     </span>
                     <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-                      Operating Overheads: {fmt(clinic.expenses)}
+                      Overheads: {fmt(clinic.expenses)} · {clinic.treatmentCount} Cases
                     </span>
                   </div>
-                  <div className={styles.invoiceRight} style={{ textAlign: 'right' }}>
+                  <div className={styles.invoiceRight} style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                     <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-navy)' }}>
                       {fmt(clinic.revenue)}
                     </span>
-                    <span style={{ fontSize: '0.72rem', color: '#15803d' }}>
-                      {clinic.treatmentCount} Cases Managed
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: clinic.netMargin >= 0 ? '#15803d' : '#dc2626' }}>
+                      Net: {fmt(clinic.netMargin)}
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-ocean)' }}>
+                      View Branch →
                     </span>
                   </div>
-                </div>
+                </Link>
               ))
             )}
           </div>
@@ -793,10 +804,26 @@ function FinanceDashboard() {
   const { users } = useUsers();
   const { inventory } = useInventory();
   const { products } = useProducts();
+  const { locations } = useLocations();
+  const { treatments } = useClinicTreatments();
+  const { expenses } = useExpenses();
 
   /* ── Approve / reject action state per payment ── */
   const [actionState, setActionState] = useState<Record<string, 'approving' | 'rejecting'>>({});
   const [actionError, setActionError] = useState('');
+
+  /* ── Grouped View Tab ── */
+  const [financeTab, setFinanceTab] = useState<'reps' | 'clinics' | 'staff'>('reps');
+
+  /* ── Financial Adjustment Modal State ── */
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [adjEmployeeId, setAdjEmployeeId] = useState('');
+  const [adjType, setAdjType] = useState<'increase' | 'reduction' | 'bonus' | 'incentive'>('bonus');
+  const [adjAmount, setAdjAmount] = useState('');
+  const [adjReason, setAdjReason] = useState('');
+  const [adjSubmitting, setAdjSubmitting] = useState(false);
+  const [adjSuccess, setAdjSuccess] = useState('');
+  const [adjError, setAdjError] = useState('');
 
   const handleApprove = async (paymentId: string) => {
     if (!user) return;
@@ -822,6 +849,48 @@ function FinanceDashboard() {
       delete next[paymentId];
       return next;
     });
+  };
+
+  const handleAdjustmentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(adjAmount);
+    if (!adjEmployeeId) {
+      setAdjError('Please select a staff employee.');
+      return;
+    }
+    if (isNaN(amt) || amt <= 0) {
+      setAdjError('Please enter a valid amount.');
+      return;
+    }
+    if (!adjReason.trim()) {
+      setAdjError('Please enter a justification reason.');
+      return;
+    }
+
+    setAdjSubmitting(true);
+    setAdjError('');
+    setAdjSuccess('');
+
+    const res = await applyCompensationAdjustment(
+      adjEmployeeId,
+      adjType,
+      amt,
+      adjReason.trim(),
+      user?.id || 'finance-manager'
+    );
+
+    setAdjSubmitting(false);
+    if (res.success) {
+      setAdjSuccess(`Successfully processed ${adjType.toUpperCase()} of ₦${amt.toLocaleString('en-NG')}!`);
+      setAdjAmount('');
+      setAdjReason('');
+      setTimeout(() => {
+        setShowAdjustmentModal(false);
+        setAdjSuccess('');
+      }, 1500);
+    } else {
+      setAdjError(res.error || 'Failed to apply adjustment.');
+    }
   };
 
   /* ── Compute finance KPIs from hook data ── */
@@ -853,7 +922,7 @@ function FinanceDashboard() {
         };
       });
 
-    // Per-rep balance summary computed from real data
+    // Per-rep summary computed from real data
     const repSummary = users
       .filter((u) => u.role === 'sales_rep')
       .map((rep) => {
@@ -869,12 +938,32 @@ function FinanceDashboard() {
         const outstanding = invoices
           .filter((i) => i.sales_rep_id === rep.id && ['sent', 'partial', 'overdue'].includes(i.status))
           .reduce((sum, i) => sum + i.total, 0);
-        return { name: rep.full_name, stockValue, collected, outstanding };
-      })
-      .filter((r) => r.stockValue > 0 || r.collected > 0 || r.outstanding > 0);
+        return { id: rep.id, name: rep.full_name, stockValue, collected, outstanding };
+      });
 
-    return { receivables, approvedTotal, pendingCount, overdueAmount, pendingPayments, repSummary };
-  }, [invoices, payments, customers, users, inventory, products]);
+    // Clinic Branches summary
+    const clinicBranches = locations
+      .filter((l) => l.type === 'clinic')
+      .map((clinic) => {
+        const branchTreatments = treatments.filter((t) => t.location_id === clinic.id);
+        const branchTreatmentRev = branchTreatments.reduce((sum, t) => sum + (t.total_cost || 0), 0);
+        const branchInvoices = invoices.filter((inv) => inv.location_id === clinic.id && inv.status === 'paid');
+        const branchInvoiceRev = branchInvoices.reduce((sum, inv) => sum + (inv.paid_amount || inv.total || 0), 0);
+        const totalRev = branchTreatmentRev + branchInvoiceRev;
+        const branchExpenses = expenses.filter((e) => e.location_id === clinic.id);
+        const totalExp = branchExpenses.reduce((sum, e) => sum + e.amount, 0);
+        const netMargin = totalRev - totalExp;
+        return {
+          id: clinic.id,
+          name: clinic.name,
+          revenue: totalRev,
+          expenses: totalExp,
+          netMargin,
+        };
+      });
+
+    return { receivables, approvedTotal, pendingCount, overdueAmount, pendingPayments, repSummary, clinicBranches };
+  }, [invoices, payments, customers, users, inventory, products, locations, treatments, expenses]);
 
   return (
     <>
@@ -911,7 +1000,7 @@ function FinanceDashboard() {
             Treasury & Ledger
           </span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-4)' }}>
           <button className={styles.actionBtn} onClick={() => router.push('/payments')}>
             <span className={styles.actionIcon}>💸</span>
             <span style={{ fontWeight: 600 }}>Payments Ledger</span>
@@ -919,26 +1008,31 @@ function FinanceDashboard() {
           </button>
           <button className={styles.actionBtn} onClick={() => router.push('/invoices')}>
             <span className={styles.actionIcon}>🧾</span>
-            <span style={{ fontWeight: 600 }}>Invoices & Receivables</span>
+            <span style={{ fontWeight: 600 }}>Invoices & Billing</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Due balances & aging</span>
           </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/reports')}>
+          <button className={styles.actionBtn} onClick={() => router.push('/expenses')}>
             <span className={styles.actionIcon}>📊</span>
-            <span style={{ fontWeight: 600 }}>Revenue & Tax Reports</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>7.5% VAT & sales breakdowns</span>
+            <span style={{ fontWeight: 600 }}>Expenses & Receipts</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Operating overheads</span>
           </button>
           <button className={styles.actionBtn} onClick={() => router.push('/payroll')}>
             <span className={styles.actionIcon}>💳</span>
-            <span style={{ fontWeight: 600 }}>Payroll & Disbursements</span>
+            <span style={{ fontWeight: 600 }}>Payroll Center</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Staff salary payouts</span>
+          </button>
+          <button className={styles.actionBtn} onClick={() => { setShowAdjustmentModal(true); setAdjSuccess(''); setAdjError(''); }}>
+            <span className={styles.actionIcon}>⚖️</span>
+            <span style={{ fontWeight: 600 }}>Salary Adjustments</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Bonus, incentive & deductions</span>
           </button>
         </div>
       </div>
 
-      {/* ── Content Cards: Payment Queue + Rep Summary ── */}
+      {/* ── Content Cards: Payment Queue + Grouped Breakdown ── */}
       <div className={styles.contentGrid}>
-        {/* Payment Verification Queue — payments awaiting finance approval */}
-          <div className={styles.card}>
+        {/* Payment Verification Queue */}
+        <div className={styles.card}>
           <h3 className={styles.cardTitle}>Payment Verification Queue</h3>
           {actionError && (
             <p style={{ color: 'var(--color-danger)', marginBottom: '8px' }}>{actionError}</p>
@@ -950,24 +1044,26 @@ function FinanceDashboard() {
               stats.pendingPayments.map((p, i) => (
                 <div key={p.id || i} className={styles.paymentItem}>
                   <div className={styles.paymentInfo}>
-                    <span className={styles.paymentRep}>{p.rep}</span>
-                    <span className={styles.paymentCustomer}>{p.customer} · {p.method} · {p.time}</span>
+                    <span className={styles.paymentAmount}>{p.amount}</span>
+                    <span className={styles.paymentCustomer}>{p.customer}</span>
+                    <span className={styles.paymentMeta}>
+                      Rep: {p.rep} · {p.method} · {p.time}
+                    </span>
                   </div>
                   <div className={styles.paymentActions}>
-                    <span className={styles.paymentAmount}>{p.amount}</span>
                     <button
-                      className={styles.approveBtn}
-                      disabled={!!actionState[p.id]}
+                      className={`${styles.btnAction} ${styles.btnApprove}`}
                       onClick={() => handleApprove(p.id)}
+                      disabled={actionState[p.id] === 'approving'}
                     >
-                      {actionState[p.id] === 'approving' ? 'Approving…' : 'Approve'}
+                      {actionState[p.id] === 'approving' ? '…' : '✓'}
                     </button>
                     <button
-                      className={styles.rejectBtn}
-                      disabled={!!actionState[p.id]}
+                      className={`${styles.btnAction} ${styles.btnReject}`}
                       onClick={() => handleReject(p.id)}
+                      disabled={actionState[p.id] === 'rejecting'}
                     >
-                      {actionState[p.id] === 'rejecting' ? 'Rejecting…' : 'Reject'}
+                      {actionState[p.id] === 'rejecting' ? '…' : '✕'}
                     </button>
                   </div>
                 </div>
@@ -976,25 +1072,245 @@ function FinanceDashboard() {
           </div>
         </div>
 
-        {/* Rep Balance Summary — stock, collected, and outstanding per rep */}
+        {/* Grouped Breakdown Tabs (Reps, Clinics, Staff) */}
         <div className={styles.card}>
-          <h3 className={styles.cardTitle}>Rep Balance Summary</h3>
-          <div className={styles.repSummary}>
-            {stats.repSummary.length === 0 ? (
-              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No sales rep balances found</p>
-            ) : (
-              stats.repSummary.map((r, i) => (
-                <div key={i} className={styles.repRow}>
-                  <span className={styles.repName}>{r.name}</span>
-                  <span className={styles.repStat}>Stock: {fmt(r.stockValue)}</span>
-                  <span className={styles.repStat}>Collected: {fmt(r.collected)}</span>
-                  <span className={styles.repOutstanding}>Due: {fmt(r.outstanding)}</span>
-                </div>
-              ))
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)', flexWrap: 'wrap', gap: '8px' }}>
+            <h3 className={styles.cardTitle} style={{ margin: 0 }}>Financial Breakdown</h3>
+            <div style={{ display: 'flex', gap: '4px', background: 'var(--color-surface)', padding: '3px', borderRadius: 'var(--radius-md)' }}>
+              <button
+                onClick={() => setFinanceTab('reps')}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  background: financeTab === 'reps' ? 'var(--color-navy)' : 'transparent',
+                  color: financeTab === 'reps' ? '#fff' : 'var(--color-slate)',
+                  cursor: 'pointer',
+                }}
+              >
+                By Reps
+              </button>
+              <button
+                onClick={() => setFinanceTab('clinics')}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  background: financeTab === 'clinics' ? 'var(--color-navy)' : 'transparent',
+                  color: financeTab === 'clinics' ? '#fff' : 'var(--color-slate)',
+                  cursor: 'pointer',
+                }}
+              >
+                By Clinics
+              </button>
+              <button
+                onClick={() => setFinanceTab('staff')}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  background: financeTab === 'staff' ? 'var(--color-navy)' : 'transparent',
+                  color: financeTab === 'staff' ? '#fff' : 'var(--color-slate)',
+                  cursor: 'pointer',
+                }}
+              >
+                By Staff
+              </button>
+            </div>
           </div>
+
+          {financeTab === 'reps' && (
+            <div className={styles.repSummary}>
+              {stats.repSummary.map((r) => (
+                <div key={r.id} className={styles.repRow}>
+                  <div>
+                    <strong className={styles.repName}>{r.name}</strong>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                      Stock Held: {fmt(r.stockValue)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-success)' }}>
+                      Collected: {fmt(r.collected)}
+                    </div>
+                    <div className={styles.repOutstanding}>Due: {fmt(r.outstanding)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {financeTab === 'clinics' && (
+            <div className={styles.repSummary}>
+              {stats.clinicBranches.map((c) => (
+                <div key={c.id} className={styles.repRow}>
+                  <div>
+                    <strong className={styles.repName}>{c.name}</strong>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                      Overheads: {fmt(c.expenses)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-navy)' }}>
+                      Revenue: {fmt(c.revenue)}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: c.netMargin >= 0 ? '#16a34a' : '#dc2626' }}>
+                      Margin: {fmt(c.netMargin)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {financeTab === 'staff' && (
+            <div className={styles.repSummary}>
+              {users.slice(0, 8).map((u) => (
+                <div key={u.id} className={styles.repRow} style={{ alignItems: 'center' }}>
+                  <div>
+                    <strong className={styles.repName}>{u.full_name}</strong>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                      {getRoleLabel(u.role)} · {u.location_id ? findLocationById(locations, u.location_id)?.name || 'HQ' : 'Headquarters'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setAdjEmployeeId(u.id);
+                      setShowAdjustmentModal(true);
+                    }}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      background: 'rgba(9, 57, 97, 0.08)',
+                      border: '1px solid rgba(9, 57, 97, 0.2)',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: 'pointer',
+                      color: 'var(--color-navy)',
+                    }}
+                  >
+                    Adjust Pay
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Salary & Compensation Adjustment Modal */}
+      <Modal isOpen={showAdjustmentModal} onClose={() => setShowAdjustmentModal(false)} title="Staff Salary & Incentive Adjustment">
+        <form onSubmit={handleAdjustmentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {adjError && (
+            <div style={{ padding: '8px 12px', background: '#fee2e2', color: '#b91c1c', borderRadius: 'var(--radius-md)', fontSize: '0.85rem' }}>
+              {adjError}
+            </div>
+          )}
+          {adjSuccess && (
+            <div style={{ padding: '8px 12px', background: '#dcfce7', color: '#15803d', borderRadius: 'var(--radius-md)', fontSize: '0.85rem' }}>
+              {adjSuccess}
+            </div>
+          )}
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-navy)', marginBottom: '4px' }}>
+              Select Staff Employee *
+            </label>
+            <select
+              required
+              value={adjEmployeeId}
+              onChange={(e) => setAdjEmployeeId(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', fontSize: '0.9rem' }}
+            >
+              <option value="">-- Choose Employee --</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name} ({getRoleLabel(u.role)})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-navy)', marginBottom: '4px' }}>
+                Adjustment Type
+              </label>
+              <select
+                value={adjType}
+                onChange={(e) => setAdjType(e.target.value as any)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', fontSize: '0.9rem' }}
+              >
+                <option value="bonus">Performance Bonus 🎁</option>
+                <option value="incentive">Sales Incentive 🚀</option>
+                <option value="increase">Base Salary Increase 📈</option>
+                <option value="reduction">Base Salary Reduction 📉</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-navy)', marginBottom: '4px' }}>
+                Amount (₦) *
+              </label>
+              <input
+                type="number"
+                min="1000"
+                step="500"
+                required
+                value={adjAmount}
+                onChange={(e) => setAdjAmount(e.target.value)}
+                placeholder="e.g. 50000"
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', fontSize: '0.9rem' }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-navy)', marginBottom: '4px' }}>
+              Reason & Financial Justification *
+            </label>
+            <textarea
+              required
+              rows={3}
+              value={adjReason}
+              onChange={(e) => setAdjReason(e.target.value)}
+              placeholder="e.g. Exceeded Q2 territory collection target by 120% / Field hazard allowance"
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', fontSize: '0.9rem' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowAdjustmentModal(false)}
+              style={{ padding: '8px 16px', background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={adjSubmitting}
+              style={{
+                padding: '8px 18px',
+                background: 'var(--color-navy)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {adjSubmitting ? 'Applying...' : 'Apply Adjustment'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </>
   );
 }
@@ -1182,25 +1498,24 @@ function InventoryDashboard() {
 function ClinicAdminSection() {
   const router = useRouter();
   const { patients } = useClinicPatients();
-  const { queue } = useClinicQueue();
   const { appointments } = useClinicAppointments();
   const { treatments } = useClinicTreatments();
 
   const stats = useMemo(() => {
     const totalPatients = patients.length;
     const todayAppointments = appointments.length;
-    const inQueue = queue.filter((q) => q.status === 'waiting' || q.status === 'in_consultation').length;
+    const inCare = treatments.filter((t) => t.status === 'ongoing').length;
     const completedTreatments = treatments.length;
-    return { totalPatients, todayAppointments, inQueue, completedTreatments };
-  }, [patients, appointments, queue, treatments]);
+    return { totalPatients, todayAppointments, inCare, completedTreatments };
+  }, [patients, appointments, treatments]);
 
   return (
     <>
       <div className={styles.statsGrid}>
         <StatCard label="Registered Patients" value={String(stats.totalPatients)} icon="🐾" color="var(--color-info-light)" />
         <StatCard label="Today's Appointments" value={String(stats.todayAppointments)} icon="📅" color="var(--color-gold-tint)" />
-        <StatCard label="Active In Queue" value={String(stats.inQueue)} icon="⏱️" trend="up" trendLabel="Triage active" color="var(--color-warning-light)" />
-        <StatCard label="Treatments Logged" value={String(stats.completedTreatments)} icon="🩺" color="var(--color-success-light)" />
+        <StatCard label="In-Care Treatments" value={String(stats.inCare)} icon="🩺" color="var(--color-warning-light)" />
+        <StatCard label="Completed Treatments" value={String(stats.completedTreatments)} icon="✅" color="var(--color-success-light)" />
       </div>
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
@@ -1211,48 +1526,45 @@ function ClinicAdminSection() {
           </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/queue')}>
-            <span className={styles.actionIcon}>⏱️</span>
-            <span style={{ fontWeight: 600 }}>Triage Queue</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Patient intake & wait times</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/appointments')}>
+          <Link href="/clinic/appointments" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>📅</span>
             <span style={{ fontWeight: 600 }}>Appointments</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Schedule consultations</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/patients')}>
+          </Link>
+          <Link href="/clinic/treatments" prefetch={true} className={styles.actionBtn}>
+            <span className={styles.actionIcon}>🩺</span>
+            <span style={{ fontWeight: 600 }}>Treatments & EHR</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Medical records & SOAP notes</span>
+          </Link>
+          <Link href="/clinic/patients" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>🐾</span>
             <span style={{ fontWeight: 600 }}>Patient Directory</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Medical records & owners</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/staff')}>
+          </Link>
+          <Link href="/staff" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>👥</span>
             <span style={{ fontWeight: 600 }}>Clinic Staff</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Vets, techs & rosters</span>
-          </button>
+          </Link>
         </div>
       </div>
 
       <div className={styles.contentGrid}>
         <div className={styles.card}>
-          <h3 className={styles.cardTitle}>Live Triage Queue</h3>
+          <h3 className={styles.cardTitle}>Recent Clinical Treatments</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {queue.length === 0 ? (
-              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No patients in triage queue</p>
+            {treatments.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No treatments recorded</p>
             ) : (
-              queue.slice(0, 5).map((q) => (
-                <div key={q.id} className={styles.invoiceItem}>
+              treatments.slice(0, 5).map((t) => (
+                <div key={t.id} className={styles.invoiceItem}>
                   <div>
-                    <span className={styles.invoiceId}>{q.patient?.name || 'Pet'} ({q.patient?.species || 'Animal'})</span>
-                    <span className={styles.invoiceCustomer}>Owner: {q.owner?.full_name || 'Walk-in'} · {q.reason_for_visit}</span>
+                    <span className={styles.invoiceId}>{t.patient?.name || 'Patient'} · {t.diagnosis || 'Clinical Assessment'}</span>
+                    <span className={styles.invoiceCustomer}>Vet: {t.vet?.full_name || 'Dr. On Duty'} · {t.date}</span>
                   </div>
                   <div className={styles.invoiceRight}>
-                    <span className={`${styles.badgePill} ${q.triage_level === 'emergency' ? styles.statusOverdue : q.triage_level === 'urgent' ? styles.statusPending : styles.statusPaid}`}>
-                      {q.triage_level?.toUpperCase()}
-                    </span>
-                    <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
-                      {q.status.replace('_', ' ')}
+                    <span className={`${styles.badgePill} ${styles.statusPaid}`}>
+                      {t.status?.toUpperCase() || 'COMPLETED'}
                     </span>
                   </div>
                 </div>
@@ -1293,24 +1605,25 @@ function ClinicAdminSection() {
  */
 function VeterinarianSection() {
   const router = useRouter();
-  const { queue } = useClinicQueue();
+  const { appointments } = useClinicAppointments();
   const { treatments } = useClinicTreatments();
+  const { patients } = useClinicPatients();
 
   const stats = useMemo(() => {
-    const waitingCount = queue.filter((q) => q.status === 'waiting').length;
-    const criticalCount = queue.filter((q) => q.triage_level === 'emergency' || q.triage_level === 'urgent').length;
-    const inProgressCount = queue.filter((q) => q.status === 'in_consultation').length;
-    const treatmentCount = treatments.length;
-    return { waitingCount, criticalCount, inProgressCount, treatmentCount };
-  }, [queue, treatments]);
+    const scheduledAppts = appointments.filter((a) => a.status === 'confirmed' || a.status === 'scheduled').length;
+    const inCare = treatments.filter((t) => t.status === 'ongoing').length;
+    const totalTreatments = treatments.length;
+    const totalPatients = patients.length;
+    return { scheduledAppts, inCare, totalTreatments, totalPatients };
+  }, [appointments, treatments, patients]);
 
   return (
     <>
       <div className={styles.statsGrid}>
-        <StatCard label="Awaiting Consultation" value={String(stats.waitingCount)} icon="🩺" color="var(--color-info-light)" />
-        <StatCard label="Emergency / Urgent" value={String(stats.criticalCount)} icon="🚨" color={stats.criticalCount > 0 ? "var(--color-danger-light)" : "var(--color-success-light)"} />
-        <StatCard label="In Consultation" value={String(stats.inProgressCount)} icon="⏳" color="var(--color-warning-light)" />
-        <StatCard label="Completed Treatments" value={String(stats.treatmentCount)} icon="📋" color="var(--color-gold-tint)" />
+        <StatCard label="Booked Consultations" value={String(stats.scheduledAppts)} icon="📅" color="var(--color-info-light)" />
+        <StatCard label="In-Progress Treatments" value={String(stats.inCare)} icon="🩺" color="var(--color-warning-light)" />
+        <StatCard label="Completed Cases" value={String(stats.totalTreatments)} icon="📋" color="var(--color-gold-tint)" />
+        <StatCard label="Patient Records" value={String(stats.totalPatients)} icon="🐾" color="var(--color-success-light)" />
       </div>
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
@@ -1321,52 +1634,53 @@ function VeterinarianSection() {
           </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/queue')}>
-            <span className={styles.actionIcon}>🩺</span>
-            <span style={{ fontWeight: 600 }}>Start Consultation</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Call next waiting patient</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/treatments')}>
+          <Link href="/clinic/appointments" prefetch={true} className={styles.actionBtn}>
+            <span className={styles.actionIcon}>📅</span>
+            <span style={{ fontWeight: 600 }}>Consultation Schedule</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>View booked patients</span>
+          </Link>
+          <Link href="/clinic/treatments" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>📝</span>
             <span style={{ fontWeight: 600 }}>SOAP Clinical Notes</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>EHR records & diagnosis</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/patients')}>
+          </Link>
+          <Link href="/clinic/patients" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>🐾</span>
             <span style={{ fontWeight: 600 }}>Patient Medical History</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Vaccinations & surgeries</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/inventory')}>
+          </Link>
+          <Link href="/inventory" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>💊</span>
             <span style={{ fontWeight: 600 }}>Pharmacy & Rx Formulations</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Drug stock & dosages</span>
-          </button>
+          </Link>
         </div>
       </div>
 
       <div className={styles.contentGrid}>
         <div className={styles.card}>
-          <h3 className={styles.cardTitle}>Priority Patient Queue</h3>
+          <h3 className={styles.cardTitle}>Today&apos;s Consultations & Bookings</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {queue.length === 0 ? (
-              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No patients awaiting consultation ✅</p>
+            {appointments.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No consultations booked for today ✅</p>
             ) : (
-              queue.slice(0, 5).map((q) => (
-                <div key={q.id} className={styles.invoiceItem}>
+              appointments.slice(0, 5).map((a) => (
+                <div key={a.id} className={styles.invoiceItem}>
                   <div>
-                    <span className={styles.invoiceId}>{q.patient?.name || 'Pet'} ({q.patient?.species || 'Animal'})</span>
-                    <span className={styles.invoiceCustomer}>Reason: {q.reason_for_visit} · Weight: {q.patient?.weight_kg ? `${q.patient.weight_kg}kg` : 'N/A'}</span>
+                    <span className={styles.invoiceId}>{a.patient?.name || 'Pet'} ({a.patient?.species || 'Animal'})</span>
+                    <span className={styles.invoiceCustomer}>Service: {a.service_type} · Time: {a.date} {a.start_time}</span>
                   </div>
                   <div className={styles.invoiceRight}>
-                    <span className={`${styles.badgePill} ${q.triage_level === 'emergency' ? styles.statusOverdue : q.triage_level === 'urgent' ? styles.statusPending : styles.statusPaid}`}>
-                      {q.triage_level?.toUpperCase()}
+                    <span className={`${styles.badgePill} ${a.status === 'confirmed' ? styles.statusPaid : styles.statusPending}`}>
+                      {a.status?.toUpperCase() || 'BOOKED'}
                     </span>
-                    <button
-                      onClick={() => router.push('/clinic/treatments')}
-                      style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-ocean)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}
+                    <Link
+                      href="/clinic/treatments"
+                      prefetch={true}
+                      style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-ocean)', textDecoration: 'none', padding: '2px 0' }}
                     >
                       Examine →
-                    </button>
+                    </Link>
                   </div>
                 </div>
               ))
@@ -1405,23 +1719,22 @@ function VeterinarianSection() {
  * Dashboard section for `vet_tech` and `vet_assistant`.
  */
 function VetTechSection() {
-  const router = useRouter();
-  const { queue } = useClinicQueue();
+  const { appointments } = useClinicAppointments();
   const { treatments } = useClinicTreatments();
   const { inventory } = useInventory();
 
   const stats = useMemo(() => {
-    const waitingVitals = queue.filter((q) => q.status === 'waiting').length;
-    const inCare = queue.filter((q) => q.status === 'in_consultation').length;
+    const scheduledVisits = appointments.filter((a) => a.status === 'confirmed' || a.status === 'scheduled').length;
+    const inCare = treatments.filter((t) => t.status === 'ongoing').length;
     const stockItems = inventory.length;
     const totalTreatments = treatments.length;
-    return { waitingVitals, inCare, stockItems, totalTreatments };
-  }, [queue, inventory, treatments]);
+    return { scheduledVisits, inCare, stockItems, totalTreatments };
+  }, [appointments, inventory, treatments]);
 
   return (
     <>
       <div className={styles.statsGrid}>
-        <StatCard label="Awaiting Triage / Vitals" value={String(stats.waitingVitals)} icon="🌡️" color="var(--color-warning-light)" />
+        <StatCard label="Scheduled Visits" value={String(stats.scheduledVisits)} icon="📅" color="var(--color-warning-light)" />
         <StatCard label="In-Care Patients" value={String(stats.inCare)} icon="💉" color="var(--color-info-light)" />
         <StatCard label="Medication SKUs" value={String(stats.stockItems)} icon="💊" color="var(--color-gold-tint)" />
         <StatCard label="Cases Handled" value={String(stats.totalTreatments)} icon="📋" color="var(--color-success-light)" />
@@ -1429,56 +1742,60 @@ function VetTechSection() {
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
         <div className={styles.cardHeader}>
-          <h3 className={styles.cardTitle}>Nursing, Triage & Preparation</h3>
+          <h3 className={styles.cardTitle}>Nursing & Clinical Support</h3>
           <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 10px', borderRadius: 'var(--radius-full)', background: 'rgba(168, 85, 247, 0.12)', color: '#7e22ce' }}>
             Veterinary Nursing & Prep
           </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/queue')}>
-            <span className={styles.actionIcon}>🌡️</span>
-            <span style={{ fontWeight: 600 }}>Triage & Record Vitals</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Weight, temp & symptoms</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/inventory')}>
+          <Link href="/clinic/appointments" prefetch={true} className={styles.actionBtn}>
+            <span className={styles.actionIcon}>📅</span>
+            <span style={{ fontWeight: 600 }}>Clinical Schedule</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Appointments & vital checks</span>
+          </Link>
+          <Link href="/inventory" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>💉</span>
             <span style={{ fontWeight: 600 }}>Medication Stock</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Vaccines, antibiotics & drips</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/patients')}>
+          </Link>
+          <Link href="/clinic/patients" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>🐾</span>
             <span style={{ fontWeight: 600 }}>Patient Directory</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Microchips & patient profiles</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/chat')}>
+          </Link>
+          <Link href="/chat" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>💬</span>
             <span style={{ fontWeight: 600 }}>Clinical Chat</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Alert veterinarians</span>
-          </button>
+          </Link>
         </div>
       </div>
 
       <div className={styles.contentGrid}>
         <div className={styles.card}>
-          <h3 className={styles.cardTitle}>Patients Awaiting Vitals / Prep</h3>
+          <h3 className={styles.cardTitle}>Scheduled Clinical Appointments</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {queue.length === 0 ? (
-              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No patients awaiting prep</p>
+            {appointments.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No upcoming appointments</p>
             ) : (
-              queue.slice(0, 5).map((q) => (
-                <div key={q.id} className={styles.invoiceItem}>
-                  <div>
-                    <span className={styles.invoiceId}>{q.patient?.name || 'Pet'} ({q.patient?.species})</span>
-                    <span className={styles.invoiceCustomer}>Owner: {q.owner?.full_name || 'Walk-in'} · {q.reason_for_visit}</span>
+              appointments.slice(0, 5).map((a) => {
+                const petName = a.patient?.name || 'Pet Patient';
+                const species = a.patient?.species || 'Canine';
+                return (
+                  <div key={a.id} className={styles.invoiceItem}>
+                    <div>
+                      <span className={styles.invoiceId}>{petName} {species ? `(${species})` : ''}</span>
+                      <span className={styles.invoiceCustomer}>Service: {a.service_type || 'Consultation'} · {a.date}</span>
+                    </div>
+                    <div className={styles.invoiceRight}>
+                      <span className={`${styles.badgePill} ${a.status === 'confirmed' ? styles.statusPaid : a.status === 'completed' ? styles.statusDraft : styles.statusPending}`}>
+                        {a.status?.toUpperCase()}
+                      </span>
+                      <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>{a.start_time || 'Pending'}</span>
+                    </div>
                   </div>
-                  <div className={styles.invoiceRight}>
-                    <span className={`${styles.badgePill} ${q.triage_level === 'emergency' ? styles.statusOverdue : q.triage_level === 'urgent' ? styles.statusPending : styles.statusPaid}`}>
-                      {q.triage_level?.toUpperCase()}
-                    </span>
-                    <span style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>{q.status}</span>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -1512,25 +1829,24 @@ function VetTechSection() {
  * Dashboard section for `receptionist` (Front Desk Receptionist).
  */
 function ReceptionistSection() {
-  const router = useRouter();
-  const { queue } = useClinicQueue();
   const { appointments } = useClinicAppointments();
   const { patients } = useClinicPatients();
   const { invoices } = useInvoices();
+  const { customers } = useCustomers();
 
   const stats = useMemo(() => {
-    const inLounge = queue.filter((q) => q.status === 'waiting').length;
+    const scheduledAppointments = appointments.filter((a) => a.status === 'confirmed' || a.status === 'scheduled').length;
     const todayAppointments = appointments.length;
     const registeredPets = patients.length;
     const totalInvoices = invoices.length;
-    return { inLounge, todayAppointments, registeredPets, totalInvoices };
-  }, [queue, appointments, patients, invoices]);
+    return { scheduledAppointments, todayAppointments, registeredPets, totalInvoices };
+  }, [appointments, patients, invoices]);
 
   return (
     <>
       <div className={styles.statsGrid}>
-        <StatCard label="In Waiting Lounge" value={String(stats.inLounge)} icon="🛋️" color="var(--color-warning-light)" />
-        <StatCard label="Today's Appointments" value={String(stats.todayAppointments)} icon="📅" color="var(--color-info-light)" />
+        <StatCard label="Active Appointments" value={String(stats.scheduledAppointments)} icon="📅" color="var(--color-warning-light)" />
+        <StatCard label="Total Booked" value={String(stats.todayAppointments)} icon="🗓️" color="var(--color-info-light)" />
         <StatCard label="Registered Patients" value={String(stats.registeredPets)} icon="🐾" color="var(--color-gold-tint)" />
         <StatCard label="Invoices & Billing" value={String(stats.totalInvoices)} icon="🧾" color="var(--color-success-light)" />
       </div>
@@ -1543,75 +1859,83 @@ function ReceptionistSection() {
           </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/queue')}>
-            <span className={styles.actionIcon}>📋</span>
-            <span style={{ fontWeight: 600 }}>Check-In Patient</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Add walk-in or arrival</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/appointments')}>
+          <Link href="/clinic/appointments" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>📅</span>
             <span style={{ fontWeight: 600 }}>Book Appointment</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Schedule clinic visits</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/patients')}>
+          </Link>
+          <Link href="/clinic/patients" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>🐾</span>
             <span style={{ fontWeight: 600 }}>Register Pet & Owner</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Create patient file</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/invoices')}>
+          </Link>
+          <Link href="/invoices" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>🧾</span>
             <span style={{ fontWeight: 600 }}>Point of Sale / Billing</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Issue receipt & invoice</span>
-          </button>
+          </Link>
+          <Link href="/chat" prefetch={true} className={styles.actionBtn}>
+            <span className={styles.actionIcon}>💬</span>
+            <span style={{ fontWeight: 600 }}>Internal Chat</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Coordinate with clinic staff</span>
+          </Link>
         </div>
       </div>
 
       <div className={styles.contentGrid}>
-        <div className={styles.card}>
-          <h3 className={styles.cardTitle}>Active Lounge Queue</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {queue.length === 0 ? (
-              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>Lounge is clear</p>
-            ) : (
-              queue.slice(0, 5).map((q) => (
-                <div key={q.id} className={styles.invoiceItem}>
-                  <div>
-                    <span className={styles.invoiceId}>{q.patient?.name || 'Pet'} ({q.patient?.species})</span>
-                    <span className={styles.invoiceCustomer}>Owner: {q.owner?.full_name || 'Walk-in'} · {q.reason_for_visit}</span>
-                  </div>
-                  <div className={styles.invoiceRight}>
-                    <span className={`${styles.badgePill} ${q.triage_level === 'emergency' ? styles.statusOverdue : q.triage_level === 'urgent' ? styles.statusPending : styles.statusPaid}`}>
-                      {q.triage_level?.toUpperCase()}
-                    </span>
-                    <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
-                      {q.status.replace('_', ' ')}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
         <div className={styles.card}>
           <h3 className={styles.cardTitle}>Appointments Schedule</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             {appointments.length === 0 ? (
               <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No appointments booked</p>
             ) : (
-              appointments.slice(0, 5).map((a) => (
-                <div key={a.id} className={styles.invoiceItem}>
-                  <div>
-                    <span className={styles.invoiceId}>{a.patient?.name || 'Patient'} ({a.patient?.species})</span>
-                    <span className={styles.invoiceCustomer}>{a.service_type || 'General Checkup'} · {a.date} {a.start_time}</span>
+              appointments.slice(0, 5).map((a) => {
+                const foundPatient = patients.find((p) => p.id === a.patient_id);
+                const petName = a.patient?.name || foundPatient?.name || 'Pet Patient';
+                const species = a.patient?.species || foundPatient?.species || '';
+                return (
+                  <div key={a.id} className={styles.invoiceItem}>
+                    <div>
+                      <span className={styles.invoiceId}>{petName} {species ? `(${species})` : ''}</span>
+                      <span className={styles.invoiceCustomer}>{a.service_type || 'General Checkup'} · {a.date} {a.start_time}</span>
+                    </div>
+                    <div className={styles.invoiceRight}>
+                      <span className={`${styles.badgePill} ${a.status === 'confirmed' ? styles.statusPaid : a.status === 'cancelled' ? styles.statusOverdue : styles.statusPending}`}>
+                        {a.status?.toUpperCase()}
+                      </span>
+                    </div>
                   </div>
-                  <div className={styles.invoiceRight}>
-                    <span className={`${styles.badgePill} ${a.status === 'confirmed' ? styles.statusPaid : a.status === 'cancelled' ? styles.statusOverdue : styles.statusPending}`}>
-                      {a.status?.toUpperCase()}
-                    </span>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Recent Invoices</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {invoices.length === 0 ? (
+              <p style={{ color: 'var(--color-gray)', textAlign: 'center', padding: '16px' }}>No invoices recorded</p>
+            ) : (
+              invoices.slice(0, 5).map((inv) => {
+                const customer = findCustomerById(customers, inv.customer_id);
+                return (
+                  <div key={inv.id} className={styles.invoiceItem}>
+                    <div>
+                      <span className={styles.invoiceId}>{inv.invoice_number}</span>
+                      <span className={styles.invoiceCustomer}>
+                        {customer?.name || 'Customer'} · {inv.due_date}
+                      </span>
+                    </div>
+                    <div className={styles.invoiceRight}>
+                      <span className={styles.invoiceAmount}>{fmt(inv.total)}</span>
+                      <span className={`${styles.badgePill} ${inv.status === 'paid' ? styles.statusPaid : styles.statusPending}`}>
+                        {inv.status?.toUpperCase()}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -1624,11 +1948,9 @@ function ReceptionistSection() {
  * Dashboard section for `lab_scientist`.
  */
 function LabScientistSection() {
-  const router = useRouter();
   const { patients } = useClinicPatients();
   const { treatments } = useClinicTreatments();
   const { inventory } = useInventory();
-  const { queue } = useClinicQueue();
 
   return (
     <>
@@ -1636,7 +1958,7 @@ function LabScientistSection() {
         <StatCard label="Patient Records" value={String(patients.length)} icon="🐾" color="var(--color-info-light)" />
         <StatCard label="Clinical Diagnostic Cases" value={String(treatments.length)} icon="🔬" color="rgba(168, 85, 247, 0.15)" />
         <StatCard label="Laboratory Reagents & SKUs" value={String(inventory.length)} icon="🧪" color="var(--color-gold-tint)" />
-        <StatCard label="In-Clinic Patients" value={String(queue.length)} icon="🏥" color="var(--color-success-light)" />
+        <StatCard label="Completed Analyses" value={String(treatments.filter((t) => t.status === 'completed').length)} icon="🏥" color="var(--color-success-light)" />
       </div>
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-6)' }}>
@@ -1647,26 +1969,26 @@ function LabScientistSection() {
           </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/patients')}>
+          <Link href="/clinic/patients" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>🐾</span>
             <span style={{ fontWeight: 600 }}>Patient Health Records</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Look up histories & species</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/clinic/treatments')}>
+          </Link>
+          <Link href="/clinic/treatments" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>🔬</span>
             <span style={{ fontWeight: 600 }}>Diagnostic Treatments</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Review clinical notes & tests</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/inventory')}>
+          </Link>
+          <Link href="/inventory" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>🧪</span>
             <span style={{ fontWeight: 600 }}>Reagents & Lab Supplies</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Test kits, slides & reagents</span>
-          </button>
-          <button className={styles.actionBtn} onClick={() => router.push('/chat')}>
+          </Link>
+          <Link href="/chat" prefetch={true} className={styles.actionBtn}>
             <span className={styles.actionIcon}>💬</span>
             <span style={{ fontWeight: 600 }}>Clinical Chat</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Report results to veterinarians</span>
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -1870,6 +2192,7 @@ export default function DashboardPage() {
     <>
       <Topbar title={title} />
       <div className={styles.page}>
+        <AnnouncementBanner />
         {/* ── Personalised greeting ── */}
         <div className={styles.greeting}>
           <h2 className={styles.greetingText}>

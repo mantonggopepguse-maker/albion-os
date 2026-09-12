@@ -22,9 +22,21 @@
  *      provides an acceptable trade-off of simplicity vs. performance.
  */
 
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import ClientLayout from "@/components/i18n/ClientLayout";
 import "./globals.css";
+
+/* ────────────────────────────────────────────
+   Viewport & Mobile Scaling Configuration
+   ──────────────────────────────────────────── */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#093961",
+};
 
 /* ────────────────────────────────────────────
    SEO & Browser-Tab Metadata

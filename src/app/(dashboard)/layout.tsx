@@ -36,11 +36,13 @@
 /* ────────────────────────────────────────────
    Dependencies
    ──────────────────────────────────────────── */
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { NotificationsProvider } from '@/lib/notifications-context';
 import Sidebar from '@/components/layout/Sidebar';
-import MobileMenu from '@/components/layout/MobileMenu';
+import MobileNavbar from '@/components/layout/MobileNavbar';
+import MobileSidebarDrawer from '@/components/layout/MobileSidebarDrawer';
 import styles from './dashboard-layout.module.css';
 
 /* ────────────────────────────────────────────
@@ -53,7 +55,8 @@ import styles from './dashboard-layout.module.css';
  * This component implements a **client-side auth guard**:
  *   - Redirects unauthenticated users to `/login`.
  *   - Shows a full-screen loading indicator during the initial auth check.
- *   - Renders the mobile top navbar, sidebar, + main content area once confirmed.
+ *   - Renders the mobile top glassmorphic navbar, slide-out drawer, desktop sidebar,
+ *     and main content area once confirmed.
  *
  * @param children - The page content rendered inside the `<main>` element.
  * @returns The dashboard shell UI, a loading screen, or null (during redirect).
@@ -61,6 +64,15 @@ import styles from './dashboard-layout.module.css';
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const handleToggleSidebar = useCallback(() => {
+    setIsSidebarOpen((prev) => !prev);
+  }, []);
+
+  const handleCloseSidebar = useCallback(() => {
+    setIsSidebarOpen(false);
+  }, []);
 
   /* ── Auth guard redirect ──
      Runs after the AuthProvider finishes its initial session check.
@@ -93,10 +105,18 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   /* ── Authenticated layout ──
-     Mobile top navbar + fixed sidebar on desktop, scrollable main on the right. */
+     Mobile top navbar + sweet slide-out drawer on mobile screens;
+     fixed sidebar on desktop, scrollable main on the right. */
   return (
     <div className={styles.layout}>
-      <MobileMenu />
+      <MobileNavbar
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={handleToggleSidebar}
+      />
+      <MobileSidebarDrawer
+        isOpen={isSidebarOpen}
+        onClose={handleCloseSidebar}
+      />
       <Sidebar />
       <main className={styles.main}>
         {children}
@@ -113,9 +133,9 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
  * DashboardLayout — the default export, used by Next.js as the layout
  * for all routes inside the `(dashboard)` route group.
  *
- * Its only job is to wrap children in an `<AuthProvider>` so that
- * `DashboardShell` (and all descendant pages/components) can access
- * the auth context via `useAuth()`.
+ * Its only job is to wrap children in an `<AuthProvider>` and `<NotificationsProvider>`
+ * so that `DashboardShell` (and all descendant pages/components) can access
+ * auth and notification context.
  *
  * @param children - The nested page or layout to render.
  * @returns The provider-wrapped dashboard shell.
@@ -127,7 +147,9 @@ export default function DashboardLayout({
 }) {
   return (
     <AuthProvider>
-      <DashboardShell>{children}</DashboardShell>
+      <NotificationsProvider>
+        <DashboardShell>{children}</DashboardShell>
+      </NotificationsProvider>
     </AuthProvider>
   );
 }
