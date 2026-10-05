@@ -17,6 +17,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { clientCache } from '@/lib/cache';
 import { createClient } from '@/lib/supabase/client';
 import { isSupabaseMockMode, isSupabaseConfigured } from '@/lib/supabase/config';
 import type {
@@ -33,10 +34,12 @@ import type {
   LeaveType, DocumentType, TargetType, Supplier,
   PatientWithOwner, AppointmentWithRelations, PatientQueueWithRelations,
   TreatmentWithRelations, VetService, StockMovementWithRelations,
+  ClinicClient,
   LabOrder, HospitalizationRecord, ICUVitalEntry, SurgeryRecord, CashReconciliation,
   BranchExpense, AuditLog, AuditCategory,
   ClinicShift, PatientReminder, ReminderStatus,
   StaffRequest, StaffRequestType, StaffRequestStatus, Announcement,
+  NarcoticLog,
 } from '@/lib/types';
 import { transitionInvoice as dataTransitionInvoice } from '@/lib/data-service';
 import {
@@ -88,8 +91,9 @@ export interface AddProductInput {
 }
 
 export function useProducts(fetchInactive: boolean = false) {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `products_${fetchInactive}`;
+  const [products, setProducts] = useState<Product[]>(() => clientCache.get<Product[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     let query = getSupabase().from('products').select('*');
@@ -98,11 +102,15 @@ export function useProducts(fetchInactive: boolean = false) {
     }
     const { data, error } = await query.order('name');
 
-    if (!error && data && data.length > 0) setProducts(data as Product[]);
-    else if (USE_MOCK_DATA) setProducts(fetchInactive ? MOCK_PRODUCTS : MOCK_PRODUCTS.filter((p) => p.is_active !== false));
-    else setProducts([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as Product[])
+      : USE_MOCK_DATA
+      ? (fetchInactive ? MOCK_PRODUCTS : MOCK_PRODUCTS.filter((p) => p.is_active !== false))
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setProducts(fresh);
     setLoading(false);
-  }, [fetchInactive]);
+  }, [fetchInactive, cacheKey]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => { void refetch(); }, 0);
@@ -124,6 +132,7 @@ export function useProducts(fetchInactive: boolean = false) {
       .single();
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('products');
     await refetch();
     return { success: true, data: data as Product };
   }, [refetch]);
@@ -147,8 +156,9 @@ export interface AddCustomerInput {
 }
 
 export function useCustomers(fetchInactive: boolean = false) {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `customers_${fetchInactive}`;
+  const [customers, setCustomers] = useState<Customer[]>(() => clientCache.get<Customer[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     let query = getSupabase().from('customers').select('*');
@@ -157,11 +167,15 @@ export function useCustomers(fetchInactive: boolean = false) {
     }
     const { data, error } = await query.order('business_name');
 
-    if (!error && data && data.length > 0) setCustomers(data as Customer[]);
-    else if (USE_MOCK_DATA) setCustomers(fetchInactive ? MOCK_CUSTOMERS : MOCK_CUSTOMERS.filter((c) => c.is_active !== false));
-    else setCustomers([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as Customer[])
+      : USE_MOCK_DATA
+      ? (fetchInactive ? MOCK_CUSTOMERS : MOCK_CUSTOMERS.filter((c) => c.is_active !== false))
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setCustomers(fresh);
     setLoading(false);
-  }, [fetchInactive]);
+  }, [fetchInactive, cacheKey]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => { void refetch(); }, 0);
@@ -184,6 +198,7 @@ export function useCustomers(fetchInactive: boolean = false) {
         is_active: true,
       };
       MOCK_CUSTOMERS.unshift(mockCust);
+      clientCache.invalidate('customers');
       await refetch();
       return { success: true, data: mockCust };
     }
@@ -201,6 +216,7 @@ export function useCustomers(fetchInactive: boolean = false) {
       .single();
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('customers');
     await refetch();
     return { success: true, data: data as Customer };
   }, [refetch]);
@@ -227,8 +243,9 @@ export interface CreateInvoiceInput {
 }
 
 export function useInvoices() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'invoices';
+  const [invoices, setInvoices] = useState<Invoice[]>(() => clientCache.get<Invoice[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -240,11 +257,15 @@ export function useInvoices() {
       const mapped = data.map((inv: Record<string, unknown>) => ({
         ...inv,
         items: (inv.invoice_items as InvoiceItem[]) || [],
-      }));
-      setInvoices(mapped as Invoice[]);
+      })) as Invoice[];
+      clientCache.set(cacheKey, mapped);
+      setInvoices(mapped);
     } else if (USE_MOCK_DATA) {
-      setInvoices([...MOCK_INVOICES]);
+      const mock = [...MOCK_INVOICES];
+      clientCache.set(cacheKey, mock);
+      setInvoices(mock);
     } else {
+      clientCache.set(cacheKey, []);
       setInvoices([]);
     }
     setLoading(false);
@@ -316,6 +337,7 @@ export function useInvoices() {
         items: lineItems,
       };
       MOCK_INVOICES.unshift(mockInv);
+      clientCache.invalidate('invoices');
       await refetch();
       return { success: true, data: mockInv };
     }
@@ -356,9 +378,12 @@ export function useInvoices() {
       .insert(lineItems);
 
     if (itemsError) {
+      // Clean up orphaned invoice header to prevent ghost invoices
+      await getSupabase().from('invoices').delete().eq('id', invData.id);
       return { success: false, error: itemsError.message };
     }
 
+    clientCache.invalidate('invoices');
     await refetch();
     return { success: true, data: { ...invData, items: lineItems } as Invoice };
   }, [refetch]);
@@ -366,6 +391,7 @@ export function useInvoices() {
   const updateInvoiceStatus = useCallback(async (invoiceId: string, status: string) => {
     const result = await dataTransitionInvoice(invoiceId, status);
     if (!result.success) return result;
+    clientCache.invalidate('invoices');
     await refetch();
     return { success: true };
   }, [refetch]);
@@ -387,8 +413,9 @@ export interface RecordPaymentInput {
 }
 
 export function usePayments() {
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'payments';
+  const [payments, setPayments] = useState<Payment[]>(() => clientCache.get<Payment[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -396,9 +423,13 @@ export function usePayments() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data && data.length > 0) setPayments(data as Payment[]);
-    else if (USE_MOCK_DATA) setPayments(MOCK_PAYMENTS);
-    else setPayments([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as Payment[])
+      : USE_MOCK_DATA
+      ? MOCK_PAYMENTS
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setPayments(fresh);
     setLoading(false);
   }, []);
 
@@ -428,6 +459,8 @@ export function usePayments() {
       .single();
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('payments');
+    clientCache.invalidate('invoices');
     await refetch();
     return { success: true, data: data as Payment };
   }, [refetch]);
@@ -441,6 +474,8 @@ export function usePayments() {
     if (error) return { success: false, error: error.message };
     const result = data as { success: boolean; error?: string };
     if (!result.success) return { success: false, error: result.error };
+    clientCache.invalidate('payments');
+    clientCache.invalidate('invoices');
     await refetch();
     return { success: true };
   }, [refetch]);
@@ -455,6 +490,8 @@ export function usePayments() {
     if (error) return { success: false, error: error.message };
     const result = data as { success: boolean; error?: string };
     if (!result.success) return { success: false, error: result.error };
+    clientCache.invalidate('payments');
+    clientCache.invalidate('invoices');
     await refetch();
     return { success: true };
   }, [refetch]);
@@ -475,8 +512,9 @@ export interface AllocateStockInput {
 }
 
 export function useInventory() {
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'inventory';
+  const [inventory, setInventory] = useState<InventoryItem[]>(() => clientCache.get<InventoryItem[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -484,9 +522,13 @@ export function useInventory() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data && data.length > 0) setInventory(data as InventoryItem[]);
-    else if (USE_MOCK_DATA) setInventory(MOCK_INVENTORY);
-    else setInventory([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as InventoryItem[])
+      : USE_MOCK_DATA
+      ? MOCK_INVENTORY
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setInventory(fresh);
     setLoading(false);
   }, []);
 
@@ -509,6 +551,7 @@ export function useInventory() {
     if (error) return { success: false, error: error.message };
     if (!data.success) return { success: false, error: data.error };
 
+    clientCache.invalidate('inventory');
     await refetch();
     return { success: true };
   }, [refetch]);
@@ -521,8 +564,9 @@ export function useInventory() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useLocations() {
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'locations';
+  const [locations, setLocations] = useState<Location[]>(() => clientCache.get<Location[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -530,13 +574,13 @@ export function useLocations() {
       .select('*')
       .order('name');
 
-    if (!error && data && data.length > 0) {
-      setLocations(data as Location[]);
-    } else if (USE_MOCK_DATA) {
-      setLocations(MOCK_LOCATIONS);
-    } else {
-      setLocations([]);
-    }
+    const fresh = (!error && data && data.length > 0)
+      ? (data as Location[])
+      : USE_MOCK_DATA
+      ? MOCK_LOCATIONS
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setLocations(fresh);
     setLoading(false);
   }, []);
 
@@ -553,8 +597,9 @@ export function useLocations() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useUsers() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'users';
+  const [users, setUsers] = useState<User[]>(() => clientCache.get<User[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -567,10 +612,14 @@ export function useUsers() {
         ...p,
         location_name: (p.locations as { name: string }[] | null)?.[0]?.name || 'Unknown',
       }));
-      setUsers(mapped as unknown as User[]);
+      const fresh = mapped as unknown as User[];
+      clientCache.set(cacheKey, fresh);
+      setUsers(fresh);
     } else if (USE_MOCK_DATA) {
+      clientCache.set(cacheKey, MOCK_USERS);
       setUsers(MOCK_USERS);
     } else {
+      clientCache.set(cacheKey, []);
       setUsers([]);
     }
     setLoading(false);
@@ -908,8 +957,9 @@ export function useMyMessages(userId: string | null) {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useSalaryGrades() {
-  const [salaryGrades, setSalaryGrades] = useState<SalaryGrade[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'salary_grades';
+  const [salaryGrades, setSalaryGrades] = useState<SalaryGrade[]>(() => clientCache.get<SalaryGrade[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -917,9 +967,13 @@ export function useSalaryGrades() {
       .select('*')
       .order('grade');
 
-    if (!error && data && data.length > 0) setSalaryGrades(data as SalaryGrade[]);
-    else if (USE_MOCK_DATA) setSalaryGrades(MOCK_SALARY_GRADES);
-    else setSalaryGrades([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as SalaryGrade[])
+      : USE_MOCK_DATA
+      ? MOCK_SALARY_GRADES
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setSalaryGrades(fresh);
     setLoading(false);
   }, []);
 
@@ -936,8 +990,9 @@ export function useSalaryGrades() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function usePayrollRuns() {
-  const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'payroll_runs';
+  const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>(() => clientCache.get<PayrollRun[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -945,9 +1000,13 @@ export function usePayrollRuns() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data && data.length > 0) setPayrollRuns(data as PayrollRun[]);
-    else if (USE_MOCK_DATA) setPayrollRuns(MOCK_PAYROLL_RUNS);
-    else setPayrollRuns([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as PayrollRun[])
+      : USE_MOCK_DATA
+      ? MOCK_PAYROLL_RUNS
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setPayrollRuns(fresh);
     setLoading(false);
   }, []);
 
@@ -975,8 +1034,9 @@ export function usePayrollRuns() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useLeaveRequests() {
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'leave_requests';
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => clientCache.get<LeaveRequest[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -984,9 +1044,13 @@ export function useLeaveRequests() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data && data.length > 0) setLeaveRequests(data as LeaveRequest[]);
-    else if (USE_MOCK_DATA) setLeaveRequests(MOCK_LEAVE_REQUESTS);
-    else setLeaveRequests([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as LeaveRequest[])
+      : USE_MOCK_DATA
+      ? MOCK_LEAVE_REQUESTS
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setLeaveRequests(fresh);
     setLoading(false);
   }, []);
 
@@ -1016,6 +1080,7 @@ export function useLeaveRequests() {
       .single();
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('leave_requests');
     await refetch();
     return { success: true, data: data as LeaveRequest };
   }, [refetch]);
@@ -1036,6 +1101,7 @@ export function useLeaveRequests() {
       .eq('status', 'pending');
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('leave_requests');
     await refetch();
     return { success: true };
   }, [refetch]);
@@ -1052,6 +1118,7 @@ export function useLeaveRequests() {
       .eq('status', 'pending');
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('leave_requests');
     await refetch();
     return { success: true };
   }, [refetch]);
@@ -1064,8 +1131,9 @@ export function useLeaveRequests() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useAttendanceLogs() {
-  const [logs, setLogs] = useState<AttendanceLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'attendance_logs';
+  const [logs, setLogs] = useState<AttendanceLog[]>(() => clientCache.get<AttendanceLog[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -1073,9 +1141,13 @@ export function useAttendanceLogs() {
       .select('*')
       .order('date', { ascending: false });
 
-    if (!error && data && data.length > 0) setLogs(data as AttendanceLog[]);
-    else if (USE_MOCK_DATA) setLogs(MOCK_ATTENDANCE_LOGS);
-    else setLogs([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as AttendanceLog[])
+      : USE_MOCK_DATA
+      ? MOCK_ATTENDANCE_LOGS
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setLogs(fresh);
     setLoading(false);
   }, []);
 
@@ -1102,6 +1174,7 @@ export function useAttendanceLogs() {
         .select()
         .single();
       if (error) return { success: false, error: error.message };
+      clientCache.invalidate('attendance_logs');
       await refetch();
       return { success: true, data: data as AttendanceLog };
     }
@@ -1116,6 +1189,7 @@ export function useAttendanceLogs() {
       .single();
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('attendance_logs');
     await refetch();
     return { success: true, data: data as AttendanceLog };
   }, [refetch]);
@@ -1145,6 +1219,7 @@ export function useAttendanceLogs() {
       .single();
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('attendance_logs');
     await refetch();
     return { success: true, data: data as AttendanceLog };
   }, [refetch]);
@@ -1167,8 +1242,9 @@ export interface AddDocumentInput {
 }
 
 export function useEmployeeDocuments() {
-  const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'employee_documents';
+  const [documents, setDocuments] = useState<EmployeeDocument[]>(() => clientCache.get<EmployeeDocument[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -1176,9 +1252,13 @@ export function useEmployeeDocuments() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data && data.length > 0) setDocuments(data as EmployeeDocument[]);
-    else if (USE_MOCK_DATA) setDocuments(MOCK_EMPLOYEE_DOCUMENTS);
-    else setDocuments([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as EmployeeDocument[])
+      : USE_MOCK_DATA
+      ? MOCK_EMPLOYEE_DOCUMENTS
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setDocuments(fresh);
     setLoading(false);
   }, []);
 
@@ -1203,6 +1283,7 @@ export function useEmployeeDocuments() {
       .single();
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('employee_documents');
     await refetch();
     return { success: true, data: data as EmployeeDocument };
   }, [refetch]);
@@ -1217,6 +1298,7 @@ export function useEmployeeDocuments() {
       .single();
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('employee_documents');
     await refetch();
     return { success: true, data: data as EmployeeDocument };
   }, [refetch]);
@@ -1240,8 +1322,9 @@ export interface SetTargetInput {
 }
 
 export function usePerformanceTargets() {
-  const [targets, setTargets] = useState<PerformanceTarget[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'performance_targets';
+  const [targets, setTargets] = useState<PerformanceTarget[]>(() => clientCache.get<PerformanceTarget[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -1249,9 +1332,13 @@ export function usePerformanceTargets() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data && data.length > 0) setTargets(data as PerformanceTarget[]);
-    else if (USE_MOCK_DATA) setTargets(MOCK_PERFORMANCE_TARGETS);
-    else setTargets([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as PerformanceTarget[])
+      : USE_MOCK_DATA
+      ? MOCK_PERFORMANCE_TARGETS
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setTargets(fresh);
     setLoading(false);
   }, []);
 
@@ -1277,6 +1364,7 @@ export function usePerformanceTargets() {
       .single();
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('performance_targets');
     await refetch();
     return { success: true, data: data as PerformanceTarget };
   }, [refetch]);
@@ -1319,6 +1407,7 @@ export function usePerformanceTargets() {
       .single();
 
     if (error) return { success: false, error: error.message };
+    clientCache.invalidate('performance_targets');
     await refetch();
     return { success: true, data: data as PerformanceTarget };
   }, [refetch]);
@@ -1331,8 +1420,9 @@ export function usePerformanceTargets() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function usePerformanceReviews() {
-  const [reviews, setReviews] = useState<PerformanceReview[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'performance_reviews';
+  const [reviews, setReviews] = useState<PerformanceReview[]>(() => clientCache.get<PerformanceReview[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     const { data, error } = await getSupabase()
@@ -1340,9 +1430,13 @@ export function usePerformanceReviews() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data && data.length > 0) setReviews(data as PerformanceReview[]);
-    else if (USE_MOCK_DATA) setReviews(MOCK_PERFORMANCE_REVIEWS);
-    else setReviews([]);
+    const fresh = (!error && data && data.length > 0)
+      ? (data as PerformanceReview[])
+      : USE_MOCK_DATA
+      ? MOCK_PERFORMANCE_REVIEWS
+      : [];
+    clientCache.set(cacheKey, fresh);
+    setReviews(fresh);
     setLoading(false);
   }, []);
 
@@ -1379,29 +1473,55 @@ export function findUserById(users: User[], id: string): User | undefined {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   CLINIC — Patients, Appointments, Treatments, Queue
+   CLINIC — Clients, Patients, Appointments, Treatments, Queue
    ═══════════════════════════════════════════════════════════════ */
 
-export function useClinicPatients() {
-  const [patients, setPatients] = useState<PatientWithOwner[]>([]);
-  const [loading, setLoading] = useState(true);
+export function useClinicClients(locationId?: string) {
+  const cacheKey = locationId ? `clinic_clients_${locationId}` : 'clinic_clients';
+  const [clients, setClients] = useState<ClinicClient[]>(() => clientCache.get<ClinicClient[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
+    const { getClinicClients } = await import('@/lib/data-service');
+    const fresh = await getClinicClients(locationId);
+    clientCache.set(cacheKey, fresh);
+    setClients(fresh);
+    setLoading(false);
+  }, [cacheKey, locationId]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { clients, loading, refetch };
+}
+
+export function useClinicPatients() {
+  const cacheKey = 'clinic_patients';
+  const [patients, setPatients] = useState<PatientWithOwner[]>(() => clientCache.get<PatientWithOwner[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
+
+  const refetch = useCallback(async () => {
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('patients')
       .select('*, owner:owner_id(id, full_name, phone)')
       .order('created_at', { ascending: false });
 
+    let fresh: PatientWithOwner[];
     if (!error && data && data.length > 0) {
-      setPatients(data as PatientWithOwner[]);
+      fresh = data as PatientWithOwner[];
     } else {
       const { getPatients } = await import('@/lib/data-service');
-      setPatients(await getPatients());
+      fresh = await getPatients();
     }
+    clientCache.set(cacheKey, fresh);
+    setPatients(fresh);
     setLoading(false);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1412,19 +1532,21 @@ export function useClinicPatients() {
 }
 
 export function useClinicAppointments() {
-  const [appointments, setAppointments] = useState<AppointmentWithRelations[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'clinic_appointments';
+  const [appointments, setAppointments] = useState<AppointmentWithRelations[]>(() => clientCache.get<AppointmentWithRelations[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('appointments')
       .select('*, patient:patient_id(id, name, species), owner:owner_id(id, full_name)')
       .order('date', { ascending: true });
 
+    let hydrated: AppointmentWithRelations[];
     if (!error && data && data.length > 0) {
-      setAppointments(data as AppointmentWithRelations[]);
+      hydrated = data as AppointmentWithRelations[];
     } else {
       const { getAppointments, getPatients, getCustomers } = await import('@/lib/data-service');
       const [rawAppts, rawPatients, rawCustomers] = await Promise.all([
@@ -1435,7 +1557,7 @@ export function useClinicAppointments() {
       const patientMap = new Map(rawPatients.map((p) => [p.id, p]));
       const customerMap = new Map(rawCustomers.map((c) => [c.id, c]));
 
-      const hydrated: AppointmentWithRelations[] = rawAppts.map((a) => {
+      hydrated = rawAppts.map((a) => {
         const p = patientMap.get(a.patient_id);
         const o = customerMap.get(a.owner_id);
         return {
@@ -1444,10 +1566,11 @@ export function useClinicAppointments() {
           owner: o ? { id: o.id, full_name: o.name || o.business_name || null, name: o.name, phone: o.phone } : undefined,
         };
       });
-      setAppointments(hydrated);
     }
+    clientCache.set(cacheKey, hydrated);
+    setAppointments(hydrated);
     setLoading(false);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1458,25 +1581,29 @@ export function useClinicAppointments() {
 }
 
 export function useClinicQueue() {
-  const [queue, setQueue] = useState<PatientQueueWithRelations[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'clinic_queue';
+  const [queue, setQueue] = useState<PatientQueueWithRelations[]>(() => clientCache.get<PatientQueueWithRelations[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('patient_queue')
       .select('*, patient:patient_id(id, name, species, weight_kg), owner:owner_id(id, full_name, phone)')
       .order('created_at', { ascending: false });
 
+    let fresh: PatientQueueWithRelations[];
     if (!error && data && data.length > 0) {
-      setQueue(data as PatientQueueWithRelations[]);
+      fresh = data as PatientQueueWithRelations[];
     } else {
       const { getQueue } = await import('@/lib/data-service');
-      setQueue(await getQueue());
+      fresh = await getQueue();
     }
+    clientCache.set(cacheKey, fresh);
+    setQueue(fresh);
     setLoading(false);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1487,11 +1614,12 @@ export function useClinicQueue() {
 }
 
 export function useVetServices() {
-  const [services, setServices] = useState<VetService[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'vet_services';
+  const [services, setServices] = useState<VetService[]>(() => clientCache.get<VetService[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('vet_services')
@@ -1499,14 +1627,17 @@ export function useVetServices() {
       .eq('is_active', true)
       .order('name');
 
+    let fresh: VetService[];
     if (!error && data && data.length > 0) {
-      setServices(data as VetService[]);
+      fresh = data as VetService[];
     } else {
       const { getVetServices } = await import('@/lib/data-service');
-      setServices(await getVetServices());
+      fresh = await getVetServices();
     }
+    clientCache.set(cacheKey, fresh);
+    setServices(fresh);
     setLoading(false);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1517,25 +1648,29 @@ export function useVetServices() {
 }
 
 export function useClinicTreatments() {
-  const [treatments, setTreatments] = useState<TreatmentWithRelations[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'clinic_treatments';
+  const [treatments, setTreatments] = useState<TreatmentWithRelations[]>(() => clientCache.get<TreatmentWithRelations[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('treatments')
       .select('*, patient:patient_id(id, name, species), vet:vet_id(id, full_name)')
       .order('date', { ascending: false });
 
+    let fresh: TreatmentWithRelations[];
     if (!error && data && data.length > 0) {
-      setTreatments(data as TreatmentWithRelations[]);
+      fresh = data as TreatmentWithRelations[];
     } else {
       const { getTreatments } = await import('@/lib/data-service');
-      setTreatments(await getTreatments());
+      fresh = await getTreatments();
     }
+    clientCache.set(cacheKey, fresh);
+    setTreatments(fresh);
     setLoading(false);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1546,11 +1681,12 @@ export function useClinicTreatments() {
 }
 
 export function useStockMovements(limit = 20) {
-  const [movements, setMovements] = useState<StockMovementWithRelations[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `stock_movements_${limit}`;
+  const [movements, setMovements] = useState<StockMovementWithRelations[]>(() => clientCache.get<StockMovementWithRelations[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('stock_movements')
@@ -1558,13 +1694,11 @@ export function useStockMovements(limit = 20) {
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    if (!error && data) {
-      setMovements(data as StockMovementWithRelations[]);
-    } else {
-      setMovements([]);
-    }
+    const fresh = (!error && data) ? (data as StockMovementWithRelations[]) : [];
+    clientCache.set(cacheKey, fresh);
+    setMovements(fresh);
     setLoading(false);
-  }, [limit]);
+  }, [limit, cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1579,12 +1713,15 @@ export function useStockMovements(limit = 20) {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useSuppliers() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'suppliers';
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => clientCache.get<Supplier[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
     if (USE_MOCK_DATA) {
-      setSuppliers(MOCK_SUPPLIERS.filter((s) => s.is_active !== false));
+      const fresh = MOCK_SUPPLIERS.filter((s) => s.is_active !== false);
+      clientCache.set(cacheKey, fresh);
+      setSuppliers(fresh);
       setLoading(false);
       return;
     }
@@ -1594,10 +1731,11 @@ export function useSuppliers() {
       .eq('is_active', true)
       .order('name');
 
-    if (!error && data && data.length > 0) setSuppliers(data as Supplier[]);
-    else setSuppliers([]);
+    const fresh = (!error && data && data.length > 0) ? (data as Supplier[]) : [];
+    clientCache.set(cacheKey, fresh);
+    setSuppliers(fresh);
     setLoading(false);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => { void refetch(); }, 0);
@@ -1624,6 +1762,7 @@ export function useSuppliers() {
         updated_at: new Date().toISOString(),
       };
       MOCK_SUPPLIERS.unshift(newSup);
+      clientCache.invalidate('suppliers');
       await refetch();
       return { success: true, data: newSup };
     }
@@ -1713,16 +1852,18 @@ export function useSuppliers() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useLabOrders() {
-  const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'lab_orders';
+  const [labOrders, setLabOrders] = useState<LabOrder[]>(() => clientCache.get<LabOrder[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const { getLabOrders } = await import('@/lib/data-service');
     const data = await getLabOrders();
+    clientCache.set(cacheKey, data);
     setLabOrders(data);
     setLoading(false);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1737,16 +1878,18 @@ export function useLabOrders() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useHospitalizations() {
-  const [hospitalizations, setHospitalizations] = useState<HospitalizationRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'hospitalizations';
+  const [hospitalizations, setHospitalizations] = useState<HospitalizationRecord[]>(() => clientCache.get<HospitalizationRecord[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const { getHospitalizations } = await import('@/lib/data-service');
     const data = await getHospitalizations();
+    clientCache.set(cacheKey, data);
     setHospitalizations(data);
     setLoading(false);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1761,16 +1904,18 @@ export function useHospitalizations() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useSurgeries() {
-  const [surgeries, setSurgeries] = useState<SurgeryRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'surgeries';
+  const [surgeries, setSurgeries] = useState<SurgeryRecord[]>(() => clientCache.get<SurgeryRecord[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const { getSurgeries } = await import('@/lib/data-service');
     const data = await getSurgeries();
+    clientCache.set(cacheKey, data);
     setSurgeries(data);
     setLoading(false);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1785,16 +1930,18 @@ export function useSurgeries() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useCashReconciliations() {
-  const [reconciliations, setReconciliations] = useState<CashReconciliation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = 'cash_reconciliations';
+  const [reconciliations, setReconciliations] = useState<CashReconciliation[]>(() => clientCache.get<CashReconciliation[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const { getCashReconciliations } = await import('@/lib/data-service');
     const data = await getCashReconciliations();
+    clientCache.set(cacheKey, data);
     setReconciliations(data);
     setLoading(false);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1809,16 +1956,18 @@ export function useCashReconciliations() {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useAuditLogs(filter?: { category?: AuditCategory; search?: string }) {
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `audit_logs_${filter?.category || 'all'}_${filter?.search || ''}`;
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => clientCache.get<AuditLog[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const { getAuditLogs } = await import('@/lib/data-service');
     const data = await getAuditLogs(filter);
+    clientCache.set(cacheKey, data);
     setAuditLogs(data);
     setLoading(false);
-  }, [filter?.category, filter?.search]);
+  }, [filter, cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1833,16 +1982,18 @@ export function useAuditLogs(filter?: { category?: AuditCategory; search?: strin
    ═══════════════════════════════════════════════════════════════ */
 
 export function useExpenses(locationId?: string) {
-  const [expenses, setExpenses] = useState<BranchExpense[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `expenses_${locationId || 'all'}`;
+  const [expenses, setExpenses] = useState<BranchExpense[]>(() => clientCache.get<BranchExpense[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const { getBranchExpenses } = await import('@/lib/data-service');
     const data = await getBranchExpenses(locationId);
+    clientCache.set(cacheKey, data);
     setExpenses(data);
     setLoading(false);
-  }, [locationId]);
+  }, [locationId, cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1857,16 +2008,18 @@ export function useExpenses(locationId?: string) {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useClinicShifts(locationId?: string) {
-  const [shifts, setShifts] = useState<ClinicShift[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `clinic_shifts_${locationId || 'all'}`;
+  const [shifts, setShifts] = useState<ClinicShift[]>(() => clientCache.get<ClinicShift[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const { getClinicShifts } = await import('@/lib/data-service');
     const data = await getClinicShifts(locationId);
+    clientCache.set(cacheKey, data);
     setShifts(data);
     setLoading(false);
-  }, [locationId]);
+  }, [locationId, cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1881,16 +2034,18 @@ export function useClinicShifts(locationId?: string) {
    ═══════════════════════════════════════════════════════════════ */
 
 export function usePatientReminders(status?: ReminderStatus) {
-  const [reminders, setReminders] = useState<PatientReminder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `patient_reminders_${status || 'all'}`;
+  const [reminders, setReminders] = useState<PatientReminder[]>(() => clientCache.get<PatientReminder[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const { getPatientReminders } = await import('@/lib/data-service');
     const data = await getPatientReminders(status);
+    clientCache.set(cacheKey, data);
     setReminders(data);
     setLoading(false);
-  }, [status]);
+  }, [status, cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1905,16 +2060,18 @@ export function usePatientReminders(status?: ReminderStatus) {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useStaffRequests(userId?: string, userRole?: any) {
-  const [requests, setRequests] = useState<StaffRequest[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `staff_requests_${userId || 'all'}_${userRole || 'all'}`;
+  const [requests, setRequests] = useState<StaffRequest[]>(() => clientCache.get<StaffRequest[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const { getStaffRequests } = await import('@/lib/data-service');
     const data = await getStaffRequests(userId, userRole);
+    clientCache.set(cacheKey, data);
     setRequests(data);
     setLoading(false);
-  }, [userId, userRole]);
+  }, [userId, userRole, cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1924,14 +2081,20 @@ export function useStaffRequests(userId?: string, userRole?: any) {
   const createRequest = useCallback(async (input: any) => {
     const { createStaffRequest } = await import('@/lib/data-service');
     const res = await createStaffRequest(input);
-    if (res.success) await refetch();
+    if (res.success) {
+      clientCache.invalidate('staff_requests');
+      await refetch();
+    }
     return res;
   }, [refetch]);
 
   const updateStatus = useCallback(async (id: string, status: StaffRequestStatus, reviewerId: string, reviewerName: string, reviewNotes?: string) => {
     const { updateStaffRequestStatus } = await import('@/lib/data-service');
     const res = await updateStaffRequestStatus(id, status, reviewerId, reviewerName, reviewNotes);
-    if (res.success) await refetch();
+    if (res.success) {
+      clientCache.invalidate('staff_requests');
+      await refetch();
+    }
     return res;
   }, [refetch]);
 
@@ -1943,8 +2106,9 @@ export function useStaffRequests(userId?: string, userRole?: any) {
    ═══════════════════════════════════════════════════════════════ */
 
 export function useAnnouncements(userRole?: any, locationId?: string | null) {
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `announcements_${userRole || 'all'}_${locationId || 'all'}`;
+  const [announcements, setAnnouncements] = useState<Announcement[]>(() => clientCache.get<Announcement[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
     try {
@@ -1956,12 +2120,13 @@ export function useAnnouncements(userRole?: any, locationId?: string | null) {
   });
 
   const refetch = useCallback(async () => {
-    setLoading(true);
+    if (!clientCache.has(cacheKey)) setLoading(true);
     const { getAnnouncements } = await import('@/lib/data-service');
     const data = await getAnnouncements(userRole, locationId);
+    clientCache.set(cacheKey, data);
     setAnnouncements(data);
     setLoading(false);
-  }, [userRole, locationId]);
+  }, [userRole, locationId, cacheKey]);
 
   useEffect(() => {
     const id = window.setTimeout(() => { void refetch(); }, 0);
@@ -1971,7 +2136,10 @@ export function useAnnouncements(userRole?: any, locationId?: string | null) {
   const createNotice = useCallback(async (input: any) => {
     const { createAnnouncement } = await import('@/lib/data-service');
     const res = await createAnnouncement(input);
-    if (res.success) await refetch();
+    if (res.success) {
+      clientCache.invalidate('announcements');
+      await refetch();
+    }
     return res;
   }, [refetch]);
 
@@ -1990,6 +2158,33 @@ export function useAnnouncements(userRole?: any, locationId?: string | null) {
 
   return { announcements: activeAnnouncements, allAnnouncements: announcements, loading, refetch, createNotice, dismissNotice };
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   NARCOTICS SAFE REGISTER
+   ═══════════════════════════════════════════════════════════════ */
+
+export function useNarcoticLogs(locationId?: string | null) {
+  const cacheKey = `narcotic_logs_${locationId || 'all'}`;
+  const [logs, setLogs] = useState<NarcoticLog[]>(() => clientCache.get<NarcoticLog[]>(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !clientCache.has(cacheKey));
+
+  const refetch = useCallback(async () => {
+    if (!clientCache.has(cacheKey)) setLoading(true);
+    const { getNarcoticLogs } = await import('@/lib/data-service');
+    const data = await getNarcoticLogs(locationId);
+    clientCache.set(cacheKey, data);
+    setLogs(data);
+    setLoading(false);
+  }, [locationId, cacheKey]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => { void refetch(); }, 0);
+    return () => window.clearTimeout(id);
+  }, [refetch]);
+
+  return { logs, loading, refetch };
+}
+
 
 
 

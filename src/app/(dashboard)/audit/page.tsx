@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuditLogs } from '@/hooks/use-supabase-data';
 import type { AuditLog, AuditCategory, AuditSeverity } from '@/lib/types';
 import styles from './audit.module.css';
@@ -11,6 +11,34 @@ export default function AuditLogPage() {
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [inspectedLog, setInspectedLog] = useState<AuditLog | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Close modal on Escape key and lock scroll while open
+  useEffect(() => {
+    if (!inspectedLog) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInspectedLog(null);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [inspectedLog]);
+
+  const handleCopyPayload = useCallback(() => {
+    if (!inspectedLog) return;
+    try {
+      void navigator.clipboard.writeText(JSON.stringify(inspectedLog.details || {}, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy payload:', err);
+    }
+  }, [inspectedLog]);
 
   // Filtered logs
   const filteredLogs = useMemo(() => {
@@ -297,10 +325,20 @@ export default function AuditLogPage() {
         <div className={styles.modalBackdrop} onClick={() => setInspectedLog(null)}>
           <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <h2 className={styles.modalTitle}>
-                🔍 Audit Log Record — {inspectedLog.id}
-              </h2>
-              <button onClick={() => setInspectedLog(null)} className={styles.closeBtn}>
+              <div className={styles.modalTitleWrap}>
+                <h2 className={styles.modalTitle}>
+                  <span>🔍</span> Audit Log Record &mdash; {inspectedLog.id}
+                </h2>
+                <div className={styles.modalSubtitle}>
+                  Immutable system event on <strong>{inspectedLog.table_name}</strong>
+                </div>
+              </div>
+              <button
+                onClick={() => setInspectedLog(null)}
+                className={styles.closeBtn}
+                aria-label="Close modal"
+                title="Close (Esc)"
+              >
                 ✕
               </button>
             </div>
@@ -315,13 +353,17 @@ export default function AuditLogPage() {
                 <div className={styles.metaItem}>
                   <div className={styles.metaLabel}>Actor Attribution</div>
                   <div className={styles.metaValue}>
-                    {inspectedLog.actor_name} ({inspectedLog.actor_role})
+                    {inspectedLog.actor_name || 'System'} ({inspectedLog.actor_role})
                   </div>
                 </div>
                 <div className={styles.metaItem}>
                   <div className={styles.metaLabel}>Action & Domain</div>
                   <div className={styles.metaValue}>
-                    {inspectedLog.action.toUpperCase()} on {inspectedLog.table_name}
+                    <span className={getActionClass(inspectedLog.action)} style={{ textTransform: 'uppercase' }}>
+                      {inspectedLog.action}
+                    </span>
+                    {' '}on{' '}
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{inspectedLog.table_name}</span>
                   </div>
                 </div>
                 <div className={styles.metaItem}>
@@ -334,24 +376,53 @@ export default function AuditLogPage() {
                   <div className={styles.metaItem}>
                     <div className={styles.metaLabel}>IP Address / Node</div>
                     <div className={styles.metaValue} style={{ fontFamily: 'monospace' }}>
-                      {inspectedLog.ip_address}
+                      🌐 {inspectedLog.ip_address}
                     </div>
                   </div>
                 )}
                 <div className={styles.metaItem}>
-                  <div className={styles.metaLabel}>Severity Level</div>
-                  <div className={styles.metaValue} style={{ textTransform: 'uppercase' }}>
-                    {inspectedLog.severity}
+                  <div className={styles.metaLabel}>Severity & Category</div>
+                  <div className={styles.metaValue} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className={`${styles.severityDot} ${getSeverityDotClass(inspectedLog.severity)}`} />
+                    <span style={{ textTransform: 'uppercase' }}>{inspectedLog.severity}</span>
+                    <span style={{ color: '#cbd5e1' }}>&middot;</span>
+                    <span className={`${styles.badge} ${getCategoryBadgeClass(inspectedLog.category)}`}>
+                      {inspectedLog.category}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div style={{ marginBottom: '8px', fontSize: '12px', fontWeight: '700', color: 'var(--color-navy)' }}>
-                IMMUTABLE AUDIT PAYLOAD (JSON):
+              <div className={styles.payloadHeader}>
+                <div className={styles.payloadTitle}>
+                  Immutable Audit Payload (JSON)
+                </div>
+                <button
+                  type="button"
+                  className={`${styles.copyBtn} ${copied ? styles.copyBtnCopied : ''}`}
+                  onClick={handleCopyPayload}
+                  title="Copy JSON to clipboard"
+                >
+                  {copied ? '✓ Copied!' : '📋 Copy JSON'}
+                </button>
               </div>
               <pre className={styles.jsonBox}>
                 {JSON.stringify(inspectedLog.details || {}, null, 2)}
               </pre>
+            </div>
+            <div className={styles.modalFooter}>
+              <div className={styles.footerBadge}>
+                <span>🔒</span> Tamper-evident cryptographic ledger record
+              </div>
+              <div className={styles.footerActions}>
+                <button
+                  type="button"
+                  className={styles.closeActionBtn}
+                  onClick={() => setInspectedLog(null)}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

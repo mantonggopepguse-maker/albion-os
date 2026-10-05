@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { getSupabaseConfig } from '@/lib/supabase/config';
 
 interface DiagnosticRequest {
   patient?: {
@@ -106,6 +109,20 @@ function getFallbackDiagnosis(req: DiagnosticRequest): DiagnosticResponse {
 
 export async function POST(req: Request) {
   try {
+    // ── Server-side auth check (defense-in-depth) ──
+    const { url, anonKey } = getSupabaseConfig();
+    const cookieStore = await cookies();
+    const supabase = createServerClient(url, anonKey, {
+      cookies: {
+        getAll() { return cookieStore.getAll(); },
+        setAll() { /* read-only in route handlers */ },
+      },
+    });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const body = (await req.json()) as DiagnosticRequest;
 
     if (!body.chief_complaint || !body.chief_complaint.trim()) {

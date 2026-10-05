@@ -7,8 +7,8 @@ export const isSupabaseConfigured = (): boolean => {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 
   if (!url || !anonKey) return false;
-  // Dead, expired, or placeholder hosts must fall back to mock mode
-  if (url.includes('knabfxzouliunawxirdh') || url.includes('placeholder')) {
+  // Reject unpopulated template placeholders
+  if (url.includes('placeholder') || anonKey.includes('placeholder')) {
     return false;
   }
   return true;

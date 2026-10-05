@@ -45,8 +45,11 @@ DROP POLICY IF EXISTS "customers_insert_rep" ON public.customers;
 CREATE POLICY "customers_insert_rep" ON public.customers FOR INSERT WITH CHECK (get_user_role() = 'sales_rep');
 
 DROP POLICY IF EXISTS "customers_update" ON public.customers;
--- Restrict customers update to only the user who created them
-CREATE POLICY "customers_update" ON public.customers FOR UPDATE USING (created_by = auth.uid());
+-- Allow update by the creator, finance managers (for payment approval balance adjustments), and super admins
+CREATE POLICY "customers_update" ON public.customers FOR UPDATE USING (
+  created_by = auth.uid()
+  OR get_user_role() IN ('finance_manager', 'super_admin')
+);
 
 -- INVOICES
 DROP POLICY IF EXISTS "invoices_insert_rep" ON public.invoices;
@@ -54,8 +57,15 @@ CREATE POLICY "invoices_insert_rep" ON public.invoices FOR INSERT WITH CHECK (ge
 
 DROP POLICY IF EXISTS "invoices_update_rep" ON public.invoices;
 DROP POLICY IF EXISTS "invoices_update_admin" ON public.invoices;
--- Invoices can only be updated by the sales rep who created them
-CREATE POLICY "invoices_update_creator" ON public.invoices FOR UPDATE USING (created_by = auth.uid());
+DROP POLICY IF EXISTS "invoices_update_creator" ON public.invoices;
+-- Sales reps can only update their own draft invoices
+CREATE POLICY "invoices_update_rep" ON public.invoices FOR UPDATE USING (
+  get_user_role() = 'sales_rep' AND created_by = auth.uid() AND status = 'draft'
+);
+-- Finance managers and super admins can update any invoice (e.g. mark as paid)
+CREATE POLICY "invoices_update_admin" ON public.invoices FOR UPDATE USING (
+  get_user_role() IN ('super_admin', 'finance_manager')
+);
 
 -- INVOICE ITEMS
 DROP POLICY IF EXISTS "invoice_items_insert" ON public.invoice_items;
@@ -78,8 +88,15 @@ DROP POLICY IF EXISTS "payments_insert_rep" ON public.payments;
 CREATE POLICY "payments_insert_rep" ON public.payments FOR INSERT WITH CHECK (get_user_role() = 'sales_rep');
 
 DROP POLICY IF EXISTS "payments_update_finance" ON public.payments;
--- Payments can only be updated by the sales rep who recorded them
-CREATE POLICY "payments_update_creator" ON public.payments FOR UPDATE USING (recorded_by = auth.uid());
+DROP POLICY IF EXISTS "payments_update_creator" ON public.payments;
+-- Sales reps can update their own pending payments
+CREATE POLICY "payments_update_rep" ON public.payments FOR UPDATE USING (
+  get_user_role() = 'sales_rep' AND recorded_by = auth.uid() AND status = 'pending'
+);
+-- Finance managers and super admins can update any payment (approve/reject)
+CREATE POLICY "payments_update_finance" ON public.payments FOR UPDATE USING (
+  get_user_role() IN ('super_admin', 'finance_manager')
+);
 
 -- 4. Clinic Tables: Remove super_admin from writes (patients, appointments, treatments, etc.)
 

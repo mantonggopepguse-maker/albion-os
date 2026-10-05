@@ -80,6 +80,7 @@ export default function MobileSidebarDrawer({ isOpen, onClose }: MobileSidebarDr
     const commercialHrefs = ['/products', '/inventory', '/customers', '/invoices', '/payments', '/expenses', '/suppliers'];
     const clinicHrefs = [
       '/clinic',
+      '/clinic/clients',
       '/clinic/appointments',
       '/clinic/reminders',
       '/clinic/patients',
@@ -179,6 +180,7 @@ export default function MobileSidebarDrawer({ isOpen, onClose }: MobileSidebarDr
                   <Link
                     key={item.href}
                     href={item.href}
+                    prefetch={true}
                     className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
                     onClick={onClose}
                   >

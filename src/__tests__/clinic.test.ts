@@ -9,21 +9,30 @@ import {
   getVetServices,
   getTreatments,
   getTreatmentMedications,
+  createTreatment,
+  createTreatmentMedication,
+  getClinicClients,
+  getClinicClientById,
+  addClinicClient,
+  updateClinicClient,
 } from '@/lib/data-service';
 import {
   MOCK_PATIENTS,
   MOCK_APPOINTMENTS,
   MOCK_TREATMENTS,
+  MOCK_CLINIC_CLIENTS,
 } from '@/lib/mock-data';
 
 let patientsSnapshot: typeof MOCK_PATIENTS;
 let appointmentsSnapshot: typeof MOCK_APPOINTMENTS;
 let treatmentsSnapshot: typeof MOCK_TREATMENTS;
+let clientsSnapshot: typeof MOCK_CLINIC_CLIENTS;
 
 function saveSnapshots() {
   patientsSnapshot = JSON.parse(JSON.stringify(MOCK_PATIENTS));
   appointmentsSnapshot = JSON.parse(JSON.stringify(MOCK_APPOINTMENTS));
   treatmentsSnapshot = JSON.parse(JSON.stringify(MOCK_TREATMENTS));
+  clientsSnapshot = JSON.parse(JSON.stringify(MOCK_CLINIC_CLIENTS));
 }
 
 function restoreSnapshots() {
@@ -33,6 +42,8 @@ function restoreSnapshots() {
   MOCK_APPOINTMENTS.push(...appointmentsSnapshot);
   MOCK_TREATMENTS.length = 0;
   MOCK_TREATMENTS.push(...treatmentsSnapshot);
+  MOCK_CLINIC_CLIENTS.length = 0;
+  MOCK_CLINIC_CLIENTS.push(...clientsSnapshot);
 }
 
 beforeEach(() => {
@@ -229,3 +240,171 @@ describe('getTreatmentMedications', () => {
     expect(meds).toEqual([]);
   });
 });
+
+describe('createTreatment and createTreatmentMedication', () => {
+  it('creates a new treatment record successfully', async () => {
+    const res = await createTreatment({
+      patient_id: 'p-001',
+      chief_complaint: 'Lethargy and vomiting',
+      diagnosis: 'Acute Gastroenteritis',
+      assessment: 'Dehydrated, mild pyrexia',
+      plan: 'Fluid therapy, antiemetics, bland diet',
+      status: 'completed',
+      total_cost: 15000,
+    });
+    expect(res.success).toBe(true);
+    expect(res.data).toBeDefined();
+    expect(res.data?.id).toBeDefined();
+    expect(res.data?.diagnosis).toBe('Acute Gastroenteritis');
+
+    // Verify it is retrievable via getTreatments
+    const all = await getTreatments();
+    expect(all.some((t) => t.id === res.data!.id)).toBe(true);
+  });
+
+  it('persists prescribed treatment medications durably', async () => {
+    const txRes = await createTreatment({
+      patient_id: 'p-002',
+      chief_complaint: 'Bacterial skin infection',
+      diagnosis: 'Pyoderma',
+      status: 'ongoing',
+      total_cost: 8500,
+    });
+    expect(txRes.success).toBe(true);
+    const txId = txRes.data!.id;
+
+    const medRes = await createTreatmentMedication({
+      treatment_id: txId,
+      drug_name: 'Cephalexin',
+      dosage: '500mg',
+      route: 'PO',
+      frequency: 'BID',
+      duration: '14 days',
+      quantity: 28,
+      unit_price: 300,
+    });
+    expect(medRes.success).toBe(true);
+    expect(medRes.data?.drug_name).toBe('Cephalexin');
+    expect(medRes.data?.total).toBe(8400);
+
+    const meds = await getTreatmentMedications(txId);
+    expect(meds.length).toBe(1);
+    expect(meds[0].drug_name).toBe('Cephalexin');
+    expect(meds[0].quantity).toBe(28);
+  });
+});
+
+describe('Clinic Clients', () => {
+  it('returns all clinic clients with expected attributes', async () => {
+    const clients = await getClinicClients();
+    expect(Array.isArray(clients)).toBe(true);
+    expect(clients.length).toBeGreaterThan(0);
+    const first = clients[0];
+    expect(first).toHaveProperty('id');
+    expect(first).toHaveProperty('full_name');
+    expect(first).toHaveProperty('phone');
+    expect(first).toHaveProperty('address');
+  });
+
+  it('filters clinic clients by location_id', async () => {
+    const allClients = await getClinicClients();
+    const locId = allClients.find((c) => c.location_id)?.location_id;
+    if (locId) {
+      const filtered = await getClinicClients(locId);
+      expect(filtered.every((c) => c.location_id === locId)).toBe(true);
+    }
+  });
+
+  it('retrieves single client by id with hydrated patient list', async () => {
+    const clients = await getClinicClients();
+    const target = clients[0];
+    const retrieved = await getClinicClientById(target.id);
+    expect(retrieved).toBeDefined();
+    expect(retrieved?.id).toBe(target.id);
+    expect(retrieved?.full_name).toBe(target.full_name);
+    expect(Array.isArray(retrieved?.patients)).toBe(true);
+  });
+
+  it('adds a new clinic client and validates required fields', async () => {
+    const invalidRes = await addClinicClient({
+      first_name: '',
+      last_name: 'Doe',
+      phone: '+234 801 234 5678',
+      address: '12 Marina, Lagos',
+    });
+    expect(invalidRes.success).toBe(false);
+    expect(invalidRes.error).toContain('First name is required');
+
+    const validRes = await addClinicClient({
+      first_name: 'Fatima',
+      last_name: 'Yusuf',
+      phone: '+234 809 111 2233',
+      email: 'fatima.yusuf@example.com',
+      address: '42 Admiralty Way, Lekki',
+      city: 'Lekki',
+      state: 'Lagos',
+      emergency_contact_name: 'Kabir Yusuf',
+      emergency_contact_phone: '+234 809 999 8877',
+      preferred_contact: 'WhatsApp',
+    });
+    expect(validRes.success).toBe(true);
+    expect(validRes.data).toBeDefined();
+    expect(validRes.data?.full_name).toBe('Fatima Yusuf');
+    expect(validRes.data?.phone).toBe('+234 809 111 2233');
+
+    // Verify it is retrievable via getClinicClients
+    const updatedList = await getClinicClients();
+    expect(updatedList.some((c) => c.full_name === 'Fatima Yusuf')).toBe(true);
+  });
+
+  it('updates an existing clinic client', async () => {
+    const clients = await getClinicClients();
+    const target = clients[0];
+    const updateRes = await updateClinicClient(target.id, {
+      phone: '+234 700 000 9999',
+      notes: 'VIP Client - always schedule with Dr. Emeka',
+    });
+    expect(updateRes.success).toBe(true);
+    expect(updateRes.data?.phone).toBe('+234 700 000 9999');
+    expect(updateRes.data?.notes).toBe('VIP Client - always schedule with Dr. Emeka');
+  });
+
+  it('hydrates patient owner information with client records', async () => {
+    const patients = await getPatients();
+    expect(patients.length).toBeGreaterThan(0);
+    const sample = patients[0];
+    expect(sample.owner).toBeDefined();
+    expect(sample.owner?.full_name).toBeDefined();
+    expect(sample.owner?.phone).toBeDefined();
+  });
+
+  it('registers a patient linked to clinic_client_id and resolves owner data', async () => {
+    const clientRes = await addClinicClient({
+      first_name: 'Chidi',
+      last_name: 'Anosike',
+      phone: '+234 803 555 4433',
+      address: '15 Ozumba Mbadiwe, VI',
+    });
+    expect(clientRes.success).toBe(true);
+    const clientId = clientRes.data!.id;
+
+    const patientRes = await addPatient({
+      name: 'Bingo',
+      species: 'Dog',
+      owner_id: clientId,
+      clinic_client_id: clientId,
+      breed: 'Boerboel',
+      gender: 'Male',
+      weight_kg: 42,
+    });
+    expect(patientRes.success).toBe(true);
+    expect(patientRes.data?.name).toBe('Bingo');
+
+    const patients = await getPatients();
+    const bingo = patients.find((p) => p.name === 'Bingo');
+    expect(bingo).toBeDefined();
+    expect(bingo?.owner?.full_name).toBe('Chidi Anosike');
+    expect(bingo?.owner?.phone).toBe('+234 803 555 4433');
+  });
+});
+

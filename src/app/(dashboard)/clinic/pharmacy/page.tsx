@@ -4,7 +4,8 @@ import { useState, useMemo } from 'react';
 import Topbar from '@/components/layout/Topbar';
 import Modal from '@/components/ui/Modal';
 import Toast from '@/components/ui/Toast';
-import { useProducts, useClinicPatients } from '@/hooks/use-supabase-data';
+import { useProducts, useClinicPatients, useNarcoticLogs } from '@/hooks/use-supabase-data';
+import { dispensePrescription } from '@/lib/data-service';
 import { useAuth } from '@/lib/auth-context';
 import type { Product } from '@/lib/types';
 import styles from './pharmacy.module.css';
@@ -20,6 +21,7 @@ export default function PharmacyPOSPage() {
   const { products } = useProducts();
   const { patients } = useClinicPatients();
   const { user } = useAuth();
+  const { logs: narcoticLogs, refetch: refetchNarcotics } = useNarcoticLogs(user?.location_id);
 
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -27,6 +29,7 @@ export default function PharmacyPOSPage() {
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'pos_card' | 'bank_transfer'>('cash');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // Narcotics PIN Lockbox
   const [showPinModal, setShowPinModal] = useState(false);
@@ -105,33 +108,71 @@ export default function PharmacyPOSPage() {
       setShowPinModal(true);
       return;
     }
-    executeDispense();
+    void executeDispense();
   };
 
-  const handleVerifyPin = (e: React.FormEvent) => {
+  const handleVerifyPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Default PIN: 1234 or clinic pin
-    if (enteredPin === '1234' || enteredPin === '0000') {
-      setIsPinAuthorized(true);
-      setShowPinModal(false);
-      setPinError('');
-      setToast({ message: 'Narcotics Lockbox Authorized', type: 'success' });
-      executeDispense();
-    } else {
-      setPinError('Invalid Narcotics Authorization PIN. Access Denied.');
+    if (!enteredPin || enteredPin.length < 4) {
+      setPinError('Please enter a 4-digit authorization PIN');
+      return;
     }
+    await executeDispense(enteredPin);
   };
 
-  const executeDispense = () => {
-    const patientName = patients.find((p) => p.id === selectedPatientId)?.name || 'Direct Walk-in';
-    setToast({
-      message: `Dispensed ₦${subtotal.toLocaleString()} (${cart.length} items) for ${patientName} via ${paymentMethod.toUpperCase()}`,
-      type: 'success',
+  const executeDispense = async (pin?: string) => {
+    if (!user) {
+      setToast({ message: 'Authentication required to dispense medications', type: 'error' });
+      return;
+    }
+
+    setSubmitting(true);
+    setPinError('');
+
+    const patientObj = patients.find((p) => p.id === selectedPatientId);
+    const dispenseItems = cart.map((item) => ({
+      product_id: item.product.id,
+      product_name: item.product.name,
+      quantity: item.quantity,
+      unit_price: item.product.unit_price,
+      is_controlled: isControlledDrug(item.product),
+    }));
+
+    const res = await dispensePrescription({
+      patient_id: selectedPatientId || null,
+      patient_name: patientObj?.name || 'Direct Walk-in',
+      items: dispenseItems,
+      payment_method: paymentMethod,
+      pin: pin || (hasControlledInCart ? enteredPin : undefined),
+      user_id: user.id,
+      authorizer_name: user.full_name || 'Authorized Staff',
+      location_id: user.location_id || null,
     });
-    setCart([]);
-    setSelectedPatientId('');
-    setIsPinAuthorized(false);
-    setEnteredPin('');
+
+    setSubmitting(false);
+
+    if (res.success) {
+      const patientName = patientObj?.name || 'Direct Walk-in';
+      const totalAmount = res.data?.total_amount || subtotal;
+      setToast({
+        message: `Dispensed ₦${totalAmount.toLocaleString()} (${cart.length} items) for ${patientName} via ${paymentMethod.toUpperCase()}`,
+        type: 'success',
+      });
+      setCart([]);
+      setSelectedPatientId('');
+      setIsPinAuthorized(false);
+      setEnteredPin('');
+      setShowPinModal(false);
+      await refetchNarcotics();
+    } else {
+      if (hasControlledInCart) {
+        setPinError(res.error || 'Authorization failed');
+      }
+      setToast({
+        message: res.error || 'Dispense failed',
+        type: 'error',
+      });
+    }
   };
 
   return (
@@ -342,17 +383,14 @@ export default function PharmacyPOSPage() {
               required
             />
             {pinError && <div style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px' }}>{pinError}</div>}
-            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>
-              Demo Clinic Master PIN: <code>1234</code>
-            </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
-            <button type="button" className={styles.tabBtn} onClick={() => setShowPinModal(false)}>
+            <button type="button" className={styles.tabBtn} onClick={() => setShowPinModal(false)} disabled={submitting}>
               Cancel
             </button>
-            <button type="submit" className={styles.primaryBtn}>
-              Unlock & Authorize Dispensation
+            <button type="submit" className={styles.primaryBtn} disabled={submitting}>
+              {submitting ? 'Verifying & Dispensing...' : 'Unlock & Authorize Dispensation'}
             </button>
           </div>
         </form>
@@ -375,32 +413,37 @@ export default function PharmacyPOSPage() {
                   <th style={{ padding: '6px' }}>Timestamp</th>
                   <th style={{ padding: '6px' }}>Substance</th>
                   <th style={{ padding: '6px' }}>Patient / Case</th>
-                  <th style={{ padding: '6px' }}>Qty (mL/Tabs)</th>
-                  <th style={{ padding: '6px' }}>Authorizing Surgeon</th>
+                  <th style={{ padding: '6px' }}>Qty</th>
+                  <th style={{ padding: '6px' }}>Authorized By</th>
                 </tr>
               </thead>
               <tbody>
-                <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '8px 6px' }}>{new Date().toLocaleDateString()} 09:15</td>
-                  <td style={{ padding: '8px 6px', fontWeight: 600 }}>Ketamine 100mg/mL</td>
-                  <td style={{ padding: '8px 6px' }}>Simba (Canine - Orthopedic)</td>
-                  <td style={{ padding: '8px 6px', color: '#dc2626', fontWeight: 700 }}>2.5 mL</td>
-                  <td style={{ padding: '8px 6px' }}>Dr. A. Bello (VS-491)</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '8px 6px' }}>{new Date().toLocaleDateString()} 11:30</td>
-                  <td style={{ padding: '8px 6px', fontWeight: 600 }}>Diazepam 5mg/mL</td>
-                  <td style={{ padding: '8px 6px' }}>Max (Canine - Status Epilepticus)</td>
-                  <td style={{ padding: '8px 6px', color: '#dc2626', fontWeight: 700 }}>1.0 mL</td>
-                  <td style={{ padding: '8px 6px' }}>Dr. E. Okafor (VS-218)</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '8px 6px' }}>{new Date().toLocaleDateString()} 14:00</td>
-                  <td style={{ padding: '8px 6px', fontWeight: 600 }}>Tramadol 50mg Tablets</td>
-                  <td style={{ padding: '8px 6px' }}>Bella (Feline - Post-C-Section)</td>
-                  <td style={{ padding: '8px 6px', color: '#dc2626', fontWeight: 700 }}>10 Tabs</td>
-                  <td style={{ padding: '8px 6px' }}>Dr. A. Bello (VS-491)</td>
-                </tr>
+                {narcoticLogs && narcoticLogs.length > 0 ? (
+                  narcoticLogs.map((log) => (
+                    <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '8px 6px', color: '#64748b' }}>
+                        {new Date(log.created_at).toLocaleString('en-NG', {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+                      <td style={{ padding: '8px 6px', fontWeight: 600 }}>{log.product_name}</td>
+                      <td style={{ padding: '8px 6px' }}>{log.patient_name || 'Direct Walk-in'}</td>
+                      <td style={{ padding: '8px 6px', color: '#dc2626', fontWeight: 700 }}>
+                        {log.quantity} {log.unit || 'units'}
+                      </td>
+                      <td style={{ padding: '8px 6px' }}>{log.authorizer_name}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: '16px', color: '#94a3b8' }}>
+                      No controlled substance dispensations recorded yet.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

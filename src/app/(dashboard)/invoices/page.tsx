@@ -48,6 +48,7 @@ function StatusBadge({ status }: { status: InvoiceStatus }) {
     sent: styles.badgeSent,
     overdue: styles.badgeOverdue,
     draft: styles.badgeDraft,
+    cancelled: styles.badgeDraft,
   };
   return (
     <span className={`${styles.badge} ${colorMap[status] || ''}`}>
@@ -400,8 +401,8 @@ export default function InvoicesPage() {
                         </button>
                         <button
                           style={{
-                            padding: '0.25rem 0.65rem',
-                            border: '1px solid #c5a55a',
+                            padding: '0.25rem 0.75rem',
+                            border: '1px solid #cbd5e1',
                             borderRadius: 'var(--radius-md)',
                             fontSize: '0.8rem',
                             fontWeight: 600,
@@ -413,9 +414,9 @@ export default function InvoicesPage() {
                             gap: '3px',
                           }}
                           onClick={() => window.open(`/invoices/${inv.id}/receipt`, '_blank')}
-                          title="View & Print Official Sales Receipt"
+                          title={inv.status === 'paid' ? 'View & Print Official Sales Receipt' : 'View Payment Statement'}
                         >
-                          🧾 Receipt
+                          {inv.status === 'paid' ? '🧾 Receipt' : '📄 Statement'}
                         </button>
                         {inv.status === 'draft' && (
                           <button
@@ -780,7 +781,7 @@ export default function InvoicesPage() {
                   }}
                   onClick={() => window.open(`/invoices/${viewingInvoice.id}/receipt`, '_blank')}
                 >
-                  🧾 Official Receipt (PAID)
+                  {viewingInvoice.status === 'paid' ? '🧾 Official Receipt (PAID)' : '📄 Payment Statement'}
                 </button>
                 <button
                   type="button"

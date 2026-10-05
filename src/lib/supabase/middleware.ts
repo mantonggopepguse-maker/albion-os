@@ -124,6 +124,7 @@ export async function updateSession(request: NextRequest) {
     '/payroll',
     '/reports',
     '/staff',
+    '/api',
   ];
 
   // Check if the current path matches any protected prefix

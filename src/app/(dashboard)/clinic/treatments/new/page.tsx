@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useClinicPatients, useClinicTreatments, useVetServices } from '@/hooks/use-supabase-data';
-import { createTreatment, createLabOrder } from '@/lib/data-service';
+import { createTreatment, createLabOrder, createTreatmentMedication } from '@/lib/data-service';
 import { useAuth } from '@/lib/auth-context';
 import type { LabTestType } from '@/lib/types';
 import styles from './treatment-new.module.css';
@@ -177,19 +177,11 @@ function TreatmentNewForm() {
         message: `AI Copilot generated ${data.differential_diagnoses?.length || 0} differential diagnoses!`,
       });
     } catch {
-      // Fallback AI simulation for resilient clinical uptime
-      const simulatedDiffs = [
-        { diagnosis: `${chiefComplaint.slice(0, 25)} - Primary Etiology`, confidence: 'High (85%)', reasoning: 'Consistent with clinical presentation and species epidemiology.' },
-        { diagnosis: 'Secondary Bacterial/Parasitic Infection', confidence: 'Moderate (60%)', reasoning: 'Common opportunistic complication observed in companion animals.' },
-        { diagnosis: 'Dietary Indiscretion or Environmental Sensitivity', confidence: 'Differential', reasoning: 'Must be ruled out via diet history and fecal testing.' },
-      ];
-      setAiResult({
-        differential_diagnoses: simulatedDiffs,
-        suggested_assessment: `Patient presents with ${chiefComplaint}. Vital signs stable. Differential list prioritized based on clinical examination.`,
-        suggested_plan: 'Initiate targeted antimicrobial or symptomatic therapy. Monitor hydration and nutritional intake.',
-        recommended_tests: ['Complete Blood Count (CBC)', 'Faecal Floatation'],
+      setAiResult(null);
+      setFeedback({
+        type: 'error',
+        message: 'AI Diagnostic Assistant is currently unavailable. Please record clinical observations and differential diagnoses manually.',
       });
-      setFeedback({ type: 'success', message: 'AI Clinical Assistant loaded offline differential diagnostics.' });
     } finally {
       setAiLoading(false);
     }
@@ -292,6 +284,23 @@ function TreatmentNewForm() {
 
     if (res.success && res.data) {
       setSavedTreatmentId(res.data.id);
+
+      // Persist Prescribed Medications to database
+      const validMeds = medications.filter((m) => m.drug_name.trim());
+      if (validMeds.length > 0) {
+        for (const med of validMeds) {
+          await createTreatmentMedication({
+            treatment_id: res.data.id,
+            drug_name: med.drug_name.trim(),
+            dosage: med.dosage,
+            route: med.route,
+            frequency: med.frequency,
+            duration: med.duration,
+            quantity: med.quantity,
+            unit_price: med.unit_price,
+          });
+        }
+      }
 
       // Dispatch Lab Orders if selected
       if (selectedLabTestIds.length > 0 && selectedPatient) {

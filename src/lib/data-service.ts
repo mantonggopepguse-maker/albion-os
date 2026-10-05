@@ -53,6 +53,9 @@ import type {
   PetGender,
   AppointmentStatus,
   PerformanceReview,
+  ClinicClient,
+  AddClinicClientInput,
+  PatientWithOwner,
   Patient,
   Appointment,
   Treatment,
@@ -87,6 +90,8 @@ import type {
   Announcement,
   AnnouncementScope,
   AnnouncementPriority,
+  NarcoticLog,
+  DispensePrescriptionInput,
 } from '@/lib/types';
 
 import {
@@ -108,6 +113,7 @@ import {
   MOCK_PERFORMANCE_TARGETS,
   MOCK_PERFORMANCE_REVIEWS,
   MOCK_VET_SERVICES,
+  MOCK_CLINIC_CLIENTS,
   MOCK_PATIENTS,
   MOCK_APPOINTMENTS,
   MOCK_TREATMENTS,
@@ -123,6 +129,7 @@ import {
   MOCK_REMINDERS,
   MOCK_STAFF_REQUESTS,
   MOCK_ANNOUNCEMENTS,
+  MOCK_NARCOTIC_LOGS,
   findProductById,
 } from '@/lib/mock-data';
 
@@ -446,39 +453,30 @@ export async function transitionInvoice(invoiceId: string, newStatus: string): P
   const isFinalizing = currentStatus === 'draft' && newStatus === 'sent';
 
   if (isFinalizing && invoice.items && invoice.items.length > 0) {
-    const locationId = invoice.location_id;
-    for (const item of invoice.items) {
-      let toDeduct = item.quantity;
+    if (invRaw) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || invoice.sales_rep_id || (invoice as any).created_by;
 
-      if (invRaw) {
-        const { data: batches } = await supabase
-          .from('inventory')
-          .select('*')
-          .eq('product_id', item.product_id)
-          .eq('location_id', locationId)
-          .gt('quantity', 0)
-          .order('expiry_date', { ascending: true });
-
-        if (!batches || batches.length === 0) {
-          return { success: false, error: `Insufficient stock for ${item.product_name} at this location` };
+      const { data: rpcResult, error: rpcError } = await (supabase as any).rpc(
+        'finalize_invoice_and_deduct_stock',
+        {
+          p_invoice_id: invoiceId,
+          p_user_id: userId,
         }
+      );
 
-        for (const batch of batches) {
-          if (toDeduct <= 0) break;
-          const taken = Math.min(batch.quantity, toDeduct);
-          const newQty = batch.quantity - taken;
-          await supabase
-            .from('inventory')
-            .update({
-              quantity: newQty,
-              status: newQty === 0 ? 'out_of_stock' : newQty <= 50 ? 'low_stock' : 'in_stock',
-            })
-            .eq('id', batch.id);
-          toDeduct -= taken;
-        }
+      if (rpcError || (rpcResult && !rpcResult.success)) {
+        return {
+          success: false,
+          error: rpcResult?.error || rpcError?.message || 'Failed to finalize invoice and deduct stock',
+        };
       }
+    }
 
-      if (USE_MOCK_DATA) {
+    if (USE_MOCK_DATA) {
+      const locationId = invoice.location_id;
+      for (const item of invoice.items) {
+        let toDeduct = item.quantity;
         const locationItems = MOCK_INVENTORY.filter(
           (i) => i.product_id === item.product_id && i.location_id === locationId
         ).sort((a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
@@ -493,24 +491,9 @@ export async function transitionInvoice(invoiceId: string, newStatus: string): P
         }
       }
     }
-
-    /* Log stock movement for the entire invoice */
-    if (invRaw) {
-      for (const item of invoice.items) {
-        await supabase.from('stock_movements').insert({
-          product_id: item.product_id,
-          from_location_id: locationId,
-          to_location_id: null,
-          quantity: item.quantity,
-          movement_type: 'sale',
-          reference_id: invoiceId,
-          notes: `Invoice ${invoiceId} finalized`,
-        });
-      }
-    }
   }
 
-  if (invRaw) {
+  if (invRaw && !isFinalizing) {
     await supabase.from('invoices').update({ status: newStatus }).eq('id', invoiceId);
     if (newStatus === 'paid') {
       const { data: cust } = await supabase.from('customers').select('outstanding_balance').eq('id', invoice.customer_id).single();
@@ -2039,6 +2022,7 @@ export async function getPerformanceReviewsForUser(userId: string): Promise<Perf
 
 export interface AddPatientInput {
   owner_id: string;
+  clinic_client_id?: string;
   name: string;
   species: string;
   breed?: string;
@@ -2054,11 +2038,40 @@ export interface AddPatientInput {
 
 export async function addPatient(input: AddPatientInput): Promise<ServiceResponse<Patient>> {
   if (!input.name.trim()) return { success: false, error: 'Patient name is required' };
-  if (!input.owner_id) return { success: false, error: 'Owner is required' };
+  if (!input.owner_id && !input.clinic_client_id) return { success: false, error: 'Owner is required' };
+
+  const clientId = input.clinic_client_id || input.owner_id;
+
+  if (USE_MOCK_DATA) {
+    const newPatient: Patient = {
+      id: generateId(),
+      owner_id: clientId,
+      name: input.name.trim(),
+      species: input.species as Species,
+      breed: input.breed || null,
+      gender: input.gender as PetGender,
+      date_of_birth: input.date_of_birth || null,
+      age_years: null,
+      age_months: null,
+      weight_kg: input.weight_kg || null,
+      color: input.color || null,
+      microchip_id: input.microchip_id || null,
+      spayed_neutered: input.spayed_neutered || false,
+      allergies: input.allergies || null,
+      medical_notes: input.medical_notes || null,
+      location_id: null,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    MOCK_PATIENTS.push(newPatient);
+    return { success: true, data: newPatient };
+  }
 
   const supabase = getSupabase();
   const { data, error } = await supabase.from('patients').insert({
-    owner_id: input.owner_id,
+    clinic_client_id: clientId,
+    owner_id: null,
     name: input.name.trim(),
     species: input.species,
     breed: input.breed || null,
@@ -2074,45 +2087,190 @@ export async function addPatient(input: AddPatientInput): Promise<ServiceRespons
   }).select().single();
 
   if (!error && data) return { success: true, data: data as Patient };
-
-  const newPatient: Patient = {
-    id: generateId(),
-    owner_id: input.owner_id,
-    name: input.name.trim(),
-    species: input.species as Species,
-    breed: input.breed || null,
-    gender: input.gender as PetGender,
-    date_of_birth: input.date_of_birth || null,
-    age_years: null,
-    age_months: null,
-    weight_kg: input.weight_kg || null,
-    color: input.color || null,
-    microchip_id: input.microchip_id || null,
-    spayed_neutered: input.spayed_neutered || false,
-    allergies: input.allergies || null,
-    medical_notes: input.medical_notes || null,
-    location_id: null,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-  if (USE_MOCK_DATA) MOCK_PATIENTS.push(newPatient);
-  return { success: true, data: newPatient };
+  return { success: false, error: error?.message || 'Failed to save patient in database' };
 }
 
-export async function getPatients(): Promise<Patient[]> {
+export async function getClinicClients(locationId?: string): Promise<ClinicClient[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.from('patients').select('*').order('name');
-  if (!error && data) return data as Patient[];
-  if (USE_MOCK_DATA) return [...MOCK_PATIENTS];
+  let query = supabase.from('clinic_clients').select('*').order('first_name');
+  if (locationId) {
+    query = query.eq('location_id', locationId);
+  }
+  const { data, error } = await query;
+  if (!error && data && data.length > 0) {
+    return data as ClinicClient[];
+  }
+  if (USE_MOCK_DATA) {
+    let clients = [...MOCK_CLINIC_CLIENTS];
+    if (locationId) {
+      clients = clients.filter((c) => !c.location_id || c.location_id === locationId);
+    }
+    return clients.map((c) => {
+      const ownedPets = MOCK_PATIENTS.filter((p) => p.owner_id === c.id);
+      return {
+        ...c,
+        patients: ownedPets.map((p) => ({ id: p.id, name: p.name, species: p.species, weight_kg: p.weight_kg })),
+        patient_count: ownedPets.length,
+      };
+    });
+  }
   return [];
 }
 
-export async function getPatientById(id: string): Promise<Patient | undefined> {
+export async function getClinicClientById(id: string): Promise<ClinicClient | undefined> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.from('patients').select('*').eq('id', id).maybeSingle();
-  if (!error && data) return data as Patient;
-  if (USE_MOCK_DATA) return MOCK_PATIENTS.find((p) => p.id === id);
+  const { data, error } = await supabase.from('clinic_clients').select('*').eq('id', id).maybeSingle();
+  if (!error && data) {
+    return data as ClinicClient;
+  }
+  if (USE_MOCK_DATA) {
+    const client = MOCK_CLINIC_CLIENTS.find((c) => c.id === id);
+    if (!client) return undefined;
+    const ownedPets = MOCK_PATIENTS.filter((p) => p.owner_id === client.id);
+    return {
+      ...client,
+      patients: ownedPets.map((p) => ({ id: p.id, name: p.name, species: p.species, weight_kg: p.weight_kg })),
+      patient_count: ownedPets.length,
+    };
+  }
+  return undefined;
+}
+
+export async function addClinicClient(input: AddClinicClientInput): Promise<ServiceResponse<ClinicClient>> {
+  if (!input.first_name?.trim()) return { success: false, error: 'First name is required' };
+  if (!input.last_name?.trim()) return { success: false, error: 'Last name is required' };
+  if (!input.phone?.trim()) return { success: false, error: 'Phone number is required' };
+  if (!input.address?.trim()) return { success: false, error: 'Residential address is required' };
+
+  const fullName = `${input.first_name.trim()} ${input.last_name.trim()}`;
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('clinic_clients').insert({
+    first_name: input.first_name.trim(),
+    last_name: input.last_name.trim(),
+    phone: input.phone.trim(),
+    alternate_phone: input.alternate_phone?.trim() || null,
+    email: input.email?.trim() || null,
+    address: input.address.trim(),
+    city: input.city?.trim() || null,
+    state: input.state?.trim() || 'Lagos',
+    emergency_contact_name: input.emergency_contact_name?.trim() || null,
+    emergency_contact_phone: input.emergency_contact_phone?.trim() || null,
+    emergency_contact_relation: input.emergency_contact_relation?.trim() || null,
+    preferred_contact: input.preferred_contact || 'Phone',
+    referral_source: input.referral_source?.trim() || null,
+    notes: input.notes?.trim() || null,
+    location_id: input.location_id || null,
+    is_active: true,
+  }).select().single();
+
+  if (!error && data) {
+    return { success: true, data: { ...data, full_name: fullName } as ClinicClient };
+  }
+
+  const newClient: ClinicClient = {
+    id: `cli-${Date.now().toString(36)}`,
+    first_name: input.first_name.trim(),
+    last_name: input.last_name.trim(),
+    full_name: fullName,
+    phone: input.phone.trim(),
+    alternate_phone: input.alternate_phone?.trim() || null,
+    email: input.email?.trim() || null,
+    address: input.address.trim(),
+    city: input.city?.trim() || null,
+    state: input.state?.trim() || 'Lagos',
+    emergency_contact_name: input.emergency_contact_name?.trim() || null,
+    emergency_contact_phone: input.emergency_contact_phone?.trim() || null,
+    emergency_contact_relation: input.emergency_contact_relation?.trim() || null,
+    preferred_contact: input.preferred_contact || 'Phone',
+    referral_source: input.referral_source?.trim() || null,
+    notes: input.notes?.trim() || null,
+    location_id: input.location_id || null,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    patients: [],
+    patient_count: 0,
+  };
+
+  if (USE_MOCK_DATA) {
+    MOCK_CLINIC_CLIENTS.unshift(newClient);
+  }
+  return { success: true, data: newClient };
+}
+
+export async function updateClinicClient(id: string, updates: Partial<ClinicClient>): Promise<ServiceResponse<ClinicClient>> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('clinic_clients').update({
+    ...updates,
+    updated_at: new Date().toISOString(),
+  }).eq('id', id).select().single();
+
+  if (!error && data) {
+    return { success: true, data: data as ClinicClient };
+  }
+
+  if (USE_MOCK_DATA) {
+    const idx = MOCK_CLINIC_CLIENTS.findIndex((c) => c.id === id);
+    if (idx !== -1) {
+      MOCK_CLINIC_CLIENTS[idx] = {
+        ...MOCK_CLINIC_CLIENTS[idx],
+        ...updates,
+        updated_at: new Date().toISOString(),
+      };
+      return { success: true, data: MOCK_CLINIC_CLIENTS[idx] };
+    }
+  }
+  return { success: false, error: 'Client not found' };
+}
+
+export async function getPatients(): Promise<PatientWithOwner[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('patients')
+    .select('*, client:clinic_client_id(id, full_name, phone, address), legacy_owner:owner_id(id, full_name, phone)')
+    .order('name');
+  if (!error && data && data.length > 0) {
+    return data.map((p: any) => ({
+      ...p,
+      owner: p.client || p.legacy_owner || null,
+    })) as PatientWithOwner[];
+  }
+  if (USE_MOCK_DATA) {
+    const clientMap = new Map(MOCK_CLINIC_CLIENTS.map((c) => [c.id, c]));
+    return MOCK_PATIENTS.map((p) => {
+      const c = clientMap.get(p.owner_id);
+      return {
+        ...p,
+        owner: c ? { id: c.id, full_name: c.full_name, name: c.full_name, phone: c.phone, email: c.email, address: c.address } : null,
+      };
+    });
+  }
+  return [];
+}
+
+export async function getPatientById(id: string): Promise<PatientWithOwner | undefined> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('patients')
+    .select('*, client:clinic_client_id(id, full_name, phone, address), legacy_owner:owner_id(id, full_name, phone)')
+    .eq('id', id)
+    .maybeSingle();
+  if (!error && data) {
+    const row: any = data;
+    return {
+      ...row,
+      owner: row.client || row.legacy_owner || null,
+    } as PatientWithOwner;
+  }
+  if (USE_MOCK_DATA) {
+    const p = MOCK_PATIENTS.find((item) => item.id === id);
+    if (!p) return undefined;
+    const c = MOCK_CLINIC_CLIENTS.find((item) => item.id === p.owner_id);
+    return {
+      ...p,
+      owner: c ? { id: c.id, full_name: c.full_name, name: c.full_name, phone: c.phone, email: c.email, address: c.address } : null,
+    };
+  }
   return undefined;
 }
 
@@ -2398,6 +2556,44 @@ export async function createTreatment(input: {
     return { success: true, data: newTx };
   }
   return { success: false, error: error?.message || 'Failed to create treatment' };
+}
+
+export async function createTreatmentMedication(input: {
+  treatment_id: string;
+  drug_name: string;
+  dosage: string;
+  route: string;
+  frequency: string;
+  duration: string;
+  quantity: number;
+  unit_price: number;
+  inventory_item_id?: string | null;
+}): Promise<ServiceResponse<TreatmentMedication>> {
+  const supabase = getSupabase();
+  const id = `txm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const total = (input.quantity || 1) * (input.unit_price || 0);
+  const newMed: TreatmentMedication = {
+    id,
+    treatment_id: input.treatment_id,
+    inventory_item_id: input.inventory_item_id || null,
+    drug_name: input.drug_name,
+    dosage: input.dosage,
+    route: input.route,
+    frequency: input.frequency,
+    duration: input.duration,
+    quantity: input.quantity || 1,
+    unit_price: input.unit_price || 0,
+    total,
+    created_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase.from('treatment_medications').insert(newMed).select().single();
+  if (!error && data) return { success: true, data: data as TreatmentMedication };
+  if (USE_MOCK_DATA) {
+    MOCK_TREATMENT_MEDICATIONS.unshift(newMed);
+    return { success: true, data: newMed };
+  }
+  return { success: false, error: error?.message || 'Failed to save treatment medication' };
 }
 
 /* ============================================================
@@ -2809,6 +3005,7 @@ export {
   MOCK_EMPLOYEE_DOCUMENTS,
   MOCK_PERFORMANCE_TARGETS,
   MOCK_PERFORMANCE_REVIEWS,
+  MOCK_CLINIC_CLIENTS,
   MOCK_PATIENTS,
   MOCK_APPOINTMENTS,
   MOCK_TREATMENTS,
@@ -3124,7 +3321,8 @@ export async function getStaffRequests(userId?: string, userRole?: UserRole): Pr
   }
   const { data, error } = await query;
   if (!error && data) return data as StaffRequest[];
-  return [...MOCK_STAFF_REQUESTS];
+  if (USE_MOCK_DATA) return [...MOCK_STAFF_REQUESTS];
+  return [];
 }
 
 export interface CreateStaffRequestInput {
@@ -3164,8 +3362,7 @@ export async function createStaffRequest(input: CreateStaffRequestInput): Promis
   const supabase = getSupabase();
   const { data, error } = await supabase.from('staff_requests').insert(newReq).select().single();
   if (!error && data) return { success: true, data: data as StaffRequest };
-  MOCK_STAFF_REQUESTS.unshift(newReq);
-  return { success: true, data: newReq };
+  return { success: false, error: error?.message || 'Failed to persist staff request' };
 }
 
 export async function updateStaffRequestStatus(
@@ -3175,49 +3372,60 @@ export async function updateStaffRequestStatus(
   reviewerName: string,
   reviewNotes?: string
 ): Promise<ServiceResponse<StaffRequest>> {
-  const req = MOCK_STAFF_REQUESTS.find((r) => r.id === id);
-  if (!req) return { success: false, error: 'Request not found' };
+  if (USE_MOCK_DATA) {
+    const req = MOCK_STAFF_REQUESTS.find((r) => r.id === id);
+    if (!req) return { success: false, error: 'Request not found' };
 
-  req.status = status;
-  req.reviewed_by = reviewerId;
-  req.reviewer_name = reviewerName;
-  req.reviewed_at = new Date().toISOString();
-  req.review_notes = reviewNotes || null;
+    req.status = status;
+    req.reviewed_by = reviewerId;
+    req.reviewer_name = reviewerName;
+    req.reviewed_at = new Date().toISOString();
+    req.review_notes = reviewNotes || null;
 
-  if (status === 'approved') {
-    if (req.type === 'restock' && req.details.product_id && req.details.quantity && req.location_id) {
-      const existing = MOCK_INVENTORY.find((i) => i.product_id === req.details.product_id && i.location_id === req.location_id);
-      if (existing) {
-        existing.quantity += req.details.quantity;
-      } else {
-        MOCK_INVENTORY.push({
-          id: `inv-${Date.now()}`,
-          product_id: req.details.product_id,
-          location_id: req.location_id,
-          batch_number: req.details.batch_number || `BATCH-${new Date().getFullYear()}`,
-          quantity: req.details.quantity,
-          expiry_date: new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
-          status: 'in_stock',
-        });
-      }
-    } else if (req.type === 'return' && req.details.product_id && req.details.quantity && req.location_id) {
-      const existing = MOCK_INVENTORY.find((i) => i.product_id === req.details.product_id && i.location_id === req.location_id);
-      if (existing) {
-        existing.quantity = Math.max(0, existing.quantity - req.details.quantity);
+    if (status === 'approved') {
+      if (req.type === 'restock' && req.details.product_id && req.details.quantity && req.location_id) {
+        const existing = MOCK_INVENTORY.find((i) => i.product_id === req.details.product_id && i.location_id === req.location_id);
+        if (existing) {
+          existing.quantity += req.details.quantity;
+        } else {
+          MOCK_INVENTORY.push({
+            id: `inv-${Date.now()}`,
+            product_id: req.details.product_id,
+            location_id: req.location_id,
+            batch_number: req.details.batch_number || `BATCH-${new Date().getFullYear()}`,
+            quantity: req.details.quantity,
+            expiry_date: new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
+            status: 'in_stock',
+          });
+        }
+      } else if (req.type === 'return' && req.details.product_id && req.details.quantity && req.location_id) {
+        const existing = MOCK_INVENTORY.find((i) => i.product_id === req.details.product_id && i.location_id === req.location_id);
+        if (existing) {
+          existing.quantity = Math.max(0, existing.quantity - req.details.quantity);
+        }
       }
     }
+
+    return { success: true, data: req };
   }
 
   const supabase = getSupabase();
-  await supabase.from('staff_requests').update({
-    status,
-    reviewed_by: reviewerId,
-    reviewer_name: reviewerName,
-    reviewed_at: req.reviewed_at,
-    review_notes: req.review_notes,
-  }).eq('id', id);
+  const { data, error } = await supabase
+    .from('staff_requests')
+    .update({
+      status,
+      reviewed_by: reviewerId,
+      reviewer_name: reviewerName,
+      reviewed_at: new Date().toISOString(),
+      review_notes: reviewNotes || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
 
-  return { success: true, data: req };
+  if (error || !data) return { success: false, error: error?.message || 'Failed to update request status' };
+  return { success: true, data: data as StaffRequest };
 }
 
 /* ============================================================
@@ -3233,9 +3441,13 @@ export async function getAnnouncements(userRole?: UserRole, locationId?: string 
   }
 
   const supabase = getSupabase();
-  const { data, error } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
+  let query = supabase.from('announcements').select('*').order('created_at', { ascending: false });
+  if (userRole && userRole !== 'super_admin' && userRole !== 'ceo') {
+    query = query.or(`scope.eq.all,and(scope.eq.clinic,location_id.eq.${locationId || 'null'})`);
+  }
+  const { data, error } = await query;
   if (!error && data) return data as Announcement[];
-  return [...MOCK_ANNOUNCEMENTS];
+  return [];
 }
 
 export interface CreateAnnouncementInput {
@@ -3276,8 +3488,7 @@ export async function createAnnouncement(input: CreateAnnouncementInput): Promis
   const supabase = getSupabase();
   const { data, error } = await supabase.from('announcements').insert(newAnn).select().single();
   if (!error && data) return { success: true, data: data as Announcement };
-  MOCK_ANNOUNCEMENTS.unshift(newAnn);
-  return { success: true, data: newAnn };
+  return { success: false, error: error?.message || 'Failed to create announcement in database' };
 }
 
 /* ============================================================
@@ -3289,43 +3500,71 @@ export async function recallProductBatch(
   recalledBy: string
 ): Promise<ServiceResponse<{ affectedCount: number }>> {
   if (!batchNumber.trim()) return { success: false, error: 'Batch number is required' };
-  
-  let count = 0;
-  for (const item of MOCK_INVENTORY) {
-    if (item.batch_number.toLowerCase() === batchNumber.toLowerCase().trim()) {
-      item.status = 'expired';
-      count += item.quantity;
+
+  if (USE_MOCK_DATA) {
+    let count = 0;
+    for (const item of MOCK_INVENTORY) {
+      if (item.batch_number.toLowerCase() === batchNumber.toLowerCase().trim()) {
+        item.status = 'expired';
+        count += item.quantity;
+      }
     }
+
+    MOCK_AUDIT_LOGS.unshift({
+      id: `aud-${Date.now()}`,
+      table_name: 'inventory',
+      record_id: batchNumber,
+      action: 'PRODUCT_RECALL_INITIATED',
+      actor_id: recalledBy,
+      actor_name: 'Inventory Operations',
+      actor_role: 'inventory_manager',
+      category: 'inventory',
+      severity: 'critical',
+      details: { batchNumber, reason, quarantinedUnits: count },
+      created_at: new Date().toISOString(),
+    });
+
+    return { success: true, data: { affectedCount: count } };
   }
 
-  MOCK_AUDIT_LOGS.unshift({
-    id: `aud-${Date.now()}`,
-    table_name: 'inventory',
-    record_id: batchNumber,
-    action: 'PRODUCT_RECALL_INITIATED',
-    actor_id: recalledBy,
-    actor_name: 'Inventory Operations',
-    actor_role: 'inventory_manager',
-    category: 'inventory',
-    severity: 'critical',
-    details: { batchNumber, reason, quarantinedUnits: count },
-    created_at: new Date().toISOString(),
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc('recall_product_batch', {
+    p_batch_number: batchNumber.trim(),
+    p_reason: reason.trim(),
+    p_recalled_by: recalledBy,
   });
 
-  return { success: true, data: { affectedCount: count } };
+  if (error) return { success: false, error: error.message };
+  const res = data as { success: boolean; error?: string; affected_count?: number };
+  if (!res.success) return { success: false, error: res.error || 'Recall failed' };
+  return { success: true, data: { affectedCount: res.affected_count || 0 } };
 }
 
 export async function batchUpdateProductPrices(
-  updates: Array<{ productId: string; newPrice: number }>
+  updates: Array<{ productId: string; newPrice: number }>,
+  userId?: string
 ): Promise<ServiceResponse> {
   if (!updates.length) return { success: false, error: 'No updates provided' };
 
-  for (const up of updates) {
-    const prod = MOCK_PRODUCTS.find((p) => p.id === up.productId);
-    if (prod && up.newPrice > 0) {
-      prod.unit_price = up.newPrice;
+  if (USE_MOCK_DATA) {
+    for (const up of updates) {
+      const prod = MOCK_PRODUCTS.find((p) => p.id === up.productId);
+      if (prod && up.newPrice > 0) {
+        prod.unit_price = up.newPrice;
+      }
     }
+    return { success: true };
   }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc('batch_update_product_prices', {
+    p_updates: updates,
+    p_user_id: userId || null,
+  });
+
+  if (error) return { success: false, error: error.message };
+  const res = data as { success: boolean; error?: string };
+  if (!res.success) return { success: false, error: res.error || 'Batch price update failed' };
   return { success: true };
 }
 
@@ -3384,5 +3623,83 @@ export async function applyCompensationAdjustment(
   });
 
   return { success: true };
+}
+
+/* ============================================================
+   30. PHARMACY POS & NARCOTICS CUSTODY DISPENSING
+   ============================================================ */
+export async function getNarcoticLogs(locationId?: string | null): Promise<NarcoticLog[]> {
+  if (USE_MOCK_DATA) {
+    let list = [...MOCK_NARCOTIC_LOGS];
+    if (locationId) {
+      list = list.filter((l) => !l.location_id || l.location_id === locationId);
+    }
+    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  const supabase = getSupabase();
+  let query = supabase.from('narcotic_logs').select('*').order('created_at', { ascending: false });
+  if (locationId) {
+    query = query.or(`location_id.eq.${locationId},location_id.is.null`);
+  }
+  const { data, error } = await query;
+  if (error || !data) return [];
+  return data as NarcoticLog[];
+}
+
+export async function dispensePrescription(
+  input: DispensePrescriptionInput
+): Promise<ServiceResponse<{ total_amount: number; has_controlled: boolean }>> {
+  if (!input.items || input.items.length === 0) {
+    return { success: false, error: 'Cart is empty' };
+  }
+  const hasControlled = input.items.some((i) => i.is_controlled);
+  if (hasControlled && (!input.pin || input.pin.length < 4)) {
+    return { success: false, error: 'Valid 4-digit authorization PIN is required for controlled substances' };
+  }
+
+  if (USE_MOCK_DATA) {
+    if (hasControlled && input.pin !== '1234' && input.pin !== '0000') {
+      return { success: false, error: 'Invalid Narcotics Authorization PIN. Access Denied.' };
+    }
+    const total = input.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+
+    if (hasControlled) {
+      for (const it of input.items.filter((i) => i.is_controlled)) {
+        MOCK_NARCOTIC_LOGS.unshift({
+          id: `narc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          item_id: it.product_id,
+          product_name: it.product_name,
+          patient_id: input.patient_id || null,
+          patient_name: input.patient_name || 'Direct Walk-in',
+          quantity: it.quantity,
+          unit: 'Units',
+          authorized_by: input.user_id,
+          authorizer_name: input.authorizer_name,
+          notes: `Dispensed via POS (${input.payment_method})`,
+          location_id: input.location_id || null,
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    return { success: true, data: { total_amount: total, has_controlled: hasControlled } };
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc('dispense_pharmacy_prescription', {
+    p_patient_id: input.patient_id || null,
+    p_patient_name: input.patient_name || null,
+    p_items: input.items,
+    p_payment_method: input.payment_method,
+    p_pin: input.pin || null,
+    p_user_id: input.user_id,
+    p_location_id: input.location_id || null,
+  });
+
+  if (error) return { success: false, error: error.message };
+  const res = data as { success: boolean; error?: string; total_amount?: number; has_controlled?: boolean };
+  if (!res.success) return { success: false, error: res.error || 'Dispense failed' };
+  return { success: true, data: { total_amount: res.total_amount || 0, has_controlled: !!res.has_controlled } };
 }
 

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import {
   useInvoices,
+  usePayments,
   useCustomers,
   useProducts,
   useUsers,
@@ -21,6 +22,7 @@ export default function InvoiceReceiptPage({ params }: { params: Promise<{ id: s
   const { id } = use(params);
   const { user, isLoading: authLoading } = useAuth();
   const { invoices, loading: invLoading } = useInvoices();
+  const { payments, loading: payLoading } = usePayments();
   const { customers } = useCustomers();
   const { products } = useProducts();
   const { users } = useUsers();
@@ -36,7 +38,7 @@ export default function InvoiceReceiptPage({ params }: { params: Promise<{ id: s
   const customer = invoice ? findCustomerById(customers, invoice.customer_id) : null;
   const salesRep = invoice ? users.find((u) => u.id === invoice.sales_rep_id) : null;
 
-  if (authLoading || invLoading || !invoice) {
+  if (authLoading || invLoading || payLoading || !invoice) {
     return <div className={styles.loading}>Loading official sales receipt...</div>;
   }
 
@@ -44,6 +46,59 @@ export default function InvoiceReceiptPage({ params }: { params: Promise<{ id: s
   const vatRate = invoice.vat_rate ?? 7.5;
   const vatAmount = invoice.vat || Math.round(invoice.subtotal * (vatRate / 100));
   const discountAmount = invoice.discount_amount || 0;
+
+  // Reconcile against approved payments
+  const approvedPayments = payments.filter(
+    (p) => p.invoice_id === invoice.id && p.status === 'approved'
+  );
+  const totalApprovedPayments = approvedPayments.reduce((sum, p) => sum + p.amount, 0);
+
+  const isMarkedPaid = invoice.status === 'paid';
+  const isCancelled = invoice.status === 'cancelled';
+  const amountPaid = isCancelled ? 0 : isMarkedPaid ? Math.max(invoice.total, totalApprovedPayments) : totalApprovedPayments;
+  const balanceDue = isCancelled ? 0 : Math.max(0, invoice.total - amountPaid);
+  const isFullyPaid = !isCancelled && (isMarkedPaid || (amountPaid >= invoice.total && invoice.total > 0));
+  const isPartiallyPaid = !isCancelled && !isFullyPaid && amountPaid > 0;
+  const isUnpaid = !isCancelled && !isFullyPaid && !isPartiallyPaid;
+
+  let watermarkText = 'PAID';
+  let watermarkClass = styles.watermark;
+  if (isCancelled) {
+    watermarkText = 'CANCELLED';
+    watermarkClass = `${styles.watermark} ${styles.watermarkVoid}`;
+  } else if (isFullyPaid) {
+    watermarkText = 'PAID';
+    watermarkClass = styles.watermark;
+  } else if (isPartiallyPaid) {
+    watermarkText = 'PARTIAL';
+    watermarkClass = `${styles.watermark} ${styles.watermarkPartial}`;
+  } else {
+    watermarkText = invoice.status === 'draft' ? 'DRAFT' : 'UNPAID';
+    watermarkClass = `${styles.watermark} ${styles.watermarkUnpaid}`;
+  }
+
+  let receiptHeading = 'OFFICIAL RECEIPT';
+  if (isCancelled) receiptHeading = 'VOID SALES RECORD';
+  else if (isPartiallyPaid) receiptHeading = 'PAYMENT STATEMENT / PARTIAL RECEIPT';
+  else if (isUnpaid) receiptHeading = 'PAYMENT STATEMENT (UNPAID)';
+
+  let statusBadgeClass = styles.statusBadge;
+  let statusBadgeText = '✓ PAYMENT RECEIVED & CONFIRMED';
+  let statusSubText = 'Settled in Full';
+
+  if (isCancelled) {
+    statusBadgeClass = `${styles.statusBadge} ${styles.statusBadgeVoid}`;
+    statusBadgeText = '✕ TRANSACTION CANCELLED';
+    statusSubText = 'Voided Document';
+  } else if (isPartiallyPaid) {
+    statusBadgeClass = `${styles.statusBadge} ${styles.statusBadgePartial}`;
+    statusBadgeText = `⏳ PARTIAL PAYMENT (₦${amountPaid.toLocaleString()} RECEIVED)`;
+    statusSubText = `Balance Remaining: ₦${balanceDue.toLocaleString()}`;
+  } else if (isUnpaid) {
+    statusBadgeClass = `${styles.statusBadge} ${styles.statusBadgeUnpaid}`;
+    statusBadgeText = '⚠️ PAYMENT PENDING';
+    statusSubText = invoice.status === 'draft' ? 'Draft Invoice — Not Yet Dispatched' : 'Awaiting Payment Approval';
+  }
 
   const handlePrint = () => {
     window.print();
@@ -76,7 +131,7 @@ export default function InvoiceReceiptPage({ params }: { params: Promise<{ id: s
 
       <div className={styles.container}>
         {/* Diagonal Watermark */}
-        <div className={styles.watermark}>PAID</div>
+        <div className={watermarkClass}>{watermarkText}</div>
 
         {/* Company Header */}
         <div className={styles.header}>
@@ -94,7 +149,20 @@ export default function InvoiceReceiptPage({ params }: { params: Promise<{ id: s
             </div>
           </div>
           <div className={styles.receiptTitle}>
-            <h2 className={styles.receiptHeading}>OFFICIAL RECEIPT</h2>
+            <h2
+              className={styles.receiptHeading}
+              style={
+                isCancelled
+                  ? { color: '#be123c' }
+                  : isPartiallyPaid
+                  ? { color: '#b45309' }
+                  : isUnpaid
+                  ? { color: '#475569' }
+                  : undefined
+              }
+            >
+              {receiptHeading}
+            </h2>
             <p className={styles.receiptNumber}>Receipt No: #{receiptNumber}</p>
             <p className={styles.invoiceRef}>Invoice Ref: #{invoice.invoice_number}</p>
           </div>
@@ -102,12 +170,12 @@ export default function InvoiceReceiptPage({ params }: { params: Promise<{ id: s
 
         {/* Status & Meta Row */}
         <div className={styles.metaRow}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className={styles.statusBadge}>
-              <span>✓</span> PAYMENT RECEIVED & CONFIRMED
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span className={statusBadgeClass}>
+              <span>{isCancelled ? '✕' : isFullyPaid ? '✓' : isPartiallyPaid ? '⏳' : '⚠️'}</span> {statusBadgeText}
             </span>
             <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
-              • {invoice.status === 'paid' ? 'Settled in Full' : 'Authorized Sales Transaction'}
+              • {statusSubText}
             </span>
           </div>
           <div style={{ display: 'flex', gap: '16px' }}>
@@ -204,14 +272,34 @@ export default function InvoiceReceiptPage({ params }: { params: Promise<{ id: s
               <span>{fmt(invoice.total)}</span>
             </div>
 
-            <div className={styles.paidTotalRow}>
+            <div
+              className={
+                isFullyPaid
+                  ? styles.paidTotalRow
+                  : isPartiallyPaid
+                  ? `${styles.paidTotalRow} ${styles.statusBadgePartial}`
+                  : styles.totalRow
+              }
+              style={{
+                marginTop: '6px',
+                padding: isFullyPaid || isPartiallyPaid ? '8px 12px' : '4px 0',
+                borderRadius: '6px',
+              }}
+            >
               <span>Amount Paid:</span>
-              <span>{fmt(invoice.total)}</span>
+              <span style={{ fontWeight: 800 }}>{fmt(amountPaid)}</span>
             </div>
 
-            <div className={styles.totalRow} style={{ marginTop: '4px', fontSize: '12px' }}>
+            <div className={styles.totalRow} style={{ marginTop: '6px', fontSize: '13px' }}>
               <span>Balance Due:</span>
-              <span style={{ fontWeight: 700, color: '#15803d' }}>₦0.00 (PAID IN FULL)</span>
+              <span
+                style={{
+                  fontWeight: 700,
+                  color: isFullyPaid ? '#15803d' : balanceDue > 0 ? '#dc2626' : '#64748b',
+                }}
+              >
+                {balanceDue <= 0 ? '₦0.00 (PAID IN FULL)' : `${fmt(balanceDue)} (OUTSTANDING)`}
+              </span>
             </div>
           </div>
         </div>

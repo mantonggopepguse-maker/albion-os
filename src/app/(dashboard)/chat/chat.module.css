@@ -543,40 +543,99 @@
   margin-right: var(--space-2);
 }
 
+.contactPanelMobileHidden {
+  /* No effect on desktop */
+}
+
+.messagePanelMobileHidden {
+  /* No effect on desktop */
+}
+
 /* ============================================================
-   Responsive
+   Responsive — Mobile Single-Panel Switching
    ============================================================ */
 @media (max-width: 768px) {
-  .mobileBackBtn {
-    display: inline-flex;
-    align-items: center;
+  .page {
+    height: calc(100dvh - 56px);
+    max-height: calc(100dvh - 56px);
+    overflow: hidden;
+  }
+
+  .chatContainer {
+    height: 100%;
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .contactItem {
+    min-height: 56px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .contactPanel {
-    width: 260px;
-    min-width: 260px;
+    width: 100%;
+    min-width: 100%;
+    flex: 1;
+  }
+
+  .contactPanelMobileHidden {
+    display: none !important;
+  }
+
+  .messagePanel {
+    width: 100%;
+    min-width: 100%;
+    flex: 1;
+  }
+
+  .messagePanelMobileHidden {
+    display: none !important;
+  }
+
+  .mobileBackBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: var(--radius-lg);
+    background: rgba(30, 79, 119, 0.12);
+    border: 1px solid rgba(30, 79, 119, 0.25);
+    color: var(--color-navy);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-right: var(--space-3);
+    min-height: 40px;
+    touch-action: manipulation;
+    flex-shrink: 0;
+  }
+
+  .mobileBackBtn:active {
+    transform: scale(0.96);
+    background: rgba(30, 79, 119, 0.2);
   }
 
   .messagesArea {
-    padding: var(--space-4);
+    padding: var(--space-3);
   }
 
   .inputArea {
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-3);
   }
 
   .messageBubble {
-    max-width: 85%;
+    max-width: 88%;
+  }
+
+  .threadHeader {
+    padding: var(--space-3);
   }
 }
 
 @media (max-width: 640px) {
-  .contactPanel {
-    width: 100%;
-    min-width: 100%;
-  }
-
   .messageBubble {
-    max-width: 90%;
+    max-width: 92%;
   }
 }

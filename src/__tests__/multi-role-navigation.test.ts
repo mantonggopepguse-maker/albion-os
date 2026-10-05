@@ -6,7 +6,7 @@ import type { UserRole } from '@/lib/types';
 import { addToQueue, updateQueueStatus, createTreatment, getQueue, getTreatments, addStaffUser, updateStaffUser } from '@/lib/data-service';
 
 describe('Multi-Role Navigation & Permission Matrix', () => {
-  it('provides executive governance and financial links for super_admin while scoping away clinical weed routes', () => {
+  it('provides executive governance and access to all clinic operational views for super_admin', () => {
     const items = getNavItemsForRole('super_admin');
     const hrefs = items.map((i) => i.href);
     expect(hrefs).toContain('/dashboard');
@@ -21,15 +21,22 @@ describe('Multi-Role Navigation & Permission Matrix', () => {
     expect(hrefs).toContain('/clinic');
     expect(hrefs).toContain('/staff');
     expect(hrefs).toContain('/audit');
-    // Operational clinical routes and direct customer lists scoped away
-    expect(hrefs).not.toContain('/clinic/queue');
-    expect(hrefs).not.toContain('/clinic/reminders');
-    expect(hrefs).not.toContain('/clinic/surgery');
-    expect(hrefs).not.toContain('/clinic/calculators');
-    expect(hrefs).not.toContain('/customers');
+    expect(hrefs).toContain('/customers');
+    // Operational clinical routes accessible for executive oversight
+    expect(hrefs).toContain('/clinic/appointments');
+    expect(hrefs).toContain('/clinic/reminders');
+    expect(hrefs).toContain('/clinic/treatments');
+    expect(hrefs).toContain('/clinic/procedures');
+    expect(hrefs).toContain('/clinic/shifts');
+    expect(hrefs).toContain('/clinic/lab');
+    expect(hrefs).toContain('/clinic/icu');
+    expect(hrefs).toContain('/clinic/pharmacy');
+    expect(hrefs).toContain('/clinic/surgery');
+    expect(hrefs).toContain('/clinic/reconciliation');
+    expect(hrefs).toContain('/clinic/calculators');
   });
 
-  it('provides executive governance and financial links for ceo while scoping away clinical weed routes', () => {
+  it('provides executive governance and access to all clinic operational views for ceo', () => {
     const items = getNavItemsForRole('ceo');
     const hrefs = items.map((i) => i.href);
     expect(hrefs).toContain('/dashboard');
@@ -37,9 +44,19 @@ describe('Multi-Role Navigation & Permission Matrix', () => {
     expect(hrefs).toContain('/payroll');
     expect(hrefs).toContain('/clinic');
     expect(hrefs).toContain('/audit');
-    expect(hrefs).not.toContain('/clinic/surgery');
-    expect(hrefs).not.toContain('/clinic/calculators');
-    expect(hrefs).not.toContain('/customers');
+    expect(hrefs).toContain('/customers');
+    // Operational clinical routes accessible for executive oversight
+    expect(hrefs).toContain('/clinic/appointments');
+    expect(hrefs).toContain('/clinic/reminders');
+    expect(hrefs).toContain('/clinic/treatments');
+    expect(hrefs).toContain('/clinic/procedures');
+    expect(hrefs).toContain('/clinic/shifts');
+    expect(hrefs).toContain('/clinic/lab');
+    expect(hrefs).toContain('/clinic/icu');
+    expect(hrefs).toContain('/clinic/pharmacy');
+    expect(hrefs).toContain('/clinic/surgery');
+    expect(hrefs).toContain('/clinic/reconciliation');
+    expect(hrefs).toContain('/clinic/calculators');
   });
 
   it('restricts sales_rep from administrative HR and clinic fleet links', () => {

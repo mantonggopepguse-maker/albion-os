@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Topbar from '@/components/layout/Topbar';
 import Modal from '@/components/ui/Modal';
 import Toast from '@/components/ui/Toast';
@@ -300,6 +301,28 @@ export default function StaffDetailPage() {
             <span className={`${styles.statusBadge} ${staff.is_active === false ? styles.statusSuspended : styles.statusActive}`}>
               {staff.is_active === false ? 'Suspended' : 'Active'}
             </span>
+            {!isOwnProfile && (
+              <Link
+                href={`/chat?userId=${staff.id}&user=${encodeURIComponent(staff.full_name)}`}
+                prefetch={true}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 14px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  color: '#ffffff',
+                  background: 'var(--color-ocean)',
+                  borderRadius: 'var(--radius-md)',
+                  textDecoration: 'none',
+                  boxShadow: '0 2px 6px rgba(30, 79, 119, 0.2)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                💬 Send Message
+              </Link>
+            )}
             {isCeo && (
               <button
                 type="button"

@@ -160,6 +160,7 @@ function ContactItem({
 
   return (
     <button
+      type="button"
       className={`${styles.contactItem} ${isActive ? styles.contactItemActive : ''}`}
       onClick={onClick}
     >
@@ -277,8 +278,14 @@ function MessageBubble({
 export default function ChatPage() {
   const { user: authUser } = useAuth();
 
+  const searchParams = useSearchParams();
+  const roleParam = searchParams.get('role');
+  const userParam = searchParams.get('userId') || searchParams.get('user');
+
   /** ID of the currently selected contact (shown in the right panel). */
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(() => {
+    return userParam || null;
+  });
 
   /** Search query for filtering the contact list. */
   const [searchQuery, setSearchQuery] = useState('');
@@ -313,17 +320,27 @@ export default function ChatPage() {
     return allUsers.filter((u) => u.id !== currentDataUserId);
   }, [allUsers, currentDataUserId]);
 
-  const searchParams = useSearchParams();
-  const roleParam = searchParams.get('role');
-
   useEffect(() => {
-    if (roleParam && !selectedContactId && contacts.length > 0) {
+    if (userParam && contacts.length > 0) {
+      const pLower = userParam.toLowerCase().trim();
+      const match = contacts.find(
+        (c) =>
+          c.id === userParam ||
+          c.id.toLowerCase() === pLower ||
+          (c.email && c.email.toLowerCase() === pLower) ||
+          c.full_name.toLowerCase() === pLower ||
+          c.full_name.toLowerCase().includes(pLower)
+      );
+      if (match) {
+        queueMicrotask(() => setSelectedContactId(match.id));
+      }
+    } else if (roleParam && !selectedContactId && contacts.length > 0) {
       const match = contacts.find((c) => c.role === roleParam);
       if (match) {
         queueMicrotask(() => setSelectedContactId(match.id));
       }
     }
-  }, [roleParam, selectedContactId, contacts]);
+  }, [userParam, roleParam, selectedContactId, contacts]);
 
   /**
    * Filtered contact list — narrows `contacts` by search query.
@@ -479,7 +496,7 @@ export default function ChatPage() {
 
       <div className={styles.chatContainer}>
         {/* ── Left Panel: Contact List ──────────────────────────────── */}
-        <div className={styles.contactPanel}>
+        <div className={`${styles.contactPanel} ${selectedContactId ? styles.contactPanelMobileHidden : ''}`}>
           {/* Panel header with title and search box */}
           <div className={styles.contactHeader}>
             <h2 className={styles.contactTitle}>Messages</h2>
@@ -511,7 +528,7 @@ export default function ChatPage() {
         </div>
 
         {/* ── Right Panel: Message Thread ───────────────────────────── */}
-        <div className={styles.messagePanel}>
+        <div className={`${styles.messagePanel} ${!selectedContactId ? styles.messagePanelMobileHidden : ''}`}>
           {selectedContact ? (
             <>
               {/* Thread header — shows selected contact's avatar, name, and status */}
@@ -635,6 +652,25 @@ export default function ChatPage() {
                 </div>
               </div>
             </>
+          ) : selectedContactId ? (
+            /* Selected contact is loading or resolving */
+            <div className={styles.emptyState} style={{ padding: 'var(--space-6)' }}>
+              <button
+                onClick={() => setSelectedContactId(null)}
+                className={styles.mobileBackBtn}
+                style={{ display: 'inline-flex', alignSelf: 'flex-start', marginBottom: 'var(--space-4)' }}
+                title="Back to contacts"
+              >
+                ← Contacts
+              </button>
+              <div className={styles.emptyIconWrapper}>
+                <span className={styles.emptyIconInner}>⏳</span>
+              </div>
+              <h3 className={styles.emptyTitle}>Loading conversation...</h3>
+              <p className={styles.emptyText}>
+                Opening conversation. If this contact does not appear, tap &ldquo;← Contacts&rdquo; to select from your team.
+              </p>
+            </div>
           ) : (
             /* Empty state — no contact selected yet */
             <div className={styles.emptyState}>

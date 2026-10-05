@@ -525,11 +525,39 @@ CREATE TABLE IF NOT EXISTS performance_reviews (
 
 
 -- ============================================================
+-- 20b. CLINIC CLIENTS (Pet Owners)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS clinic_clients (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  full_name TEXT GENERATED ALWAYS AS (TRIM(first_name || ' ' || last_name)) STORED,
+  phone TEXT NOT NULL,
+  alternate_phone TEXT,
+  email TEXT,
+  address TEXT NOT NULL,
+  city TEXT,
+  state TEXT DEFAULT 'Lagos',
+  emergency_contact_name TEXT,
+  emergency_contact_phone TEXT,
+  emergency_contact_relation TEXT,
+  preferred_contact TEXT DEFAULT 'Phone' CHECK (preferred_contact IN ('Phone', 'WhatsApp', 'Email', 'SMS')),
+  referral_source TEXT,
+  notes TEXT,
+  location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES profiles(id),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================================
 -- 21. PATIENTS (Pets / Animals)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS patients (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  owner_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  owner_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  clinic_client_id UUID REFERENCES clinic_clients(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   species TEXT NOT NULL CHECK (species IN ('Dog', 'Cat', 'Bird', 'Rabbit', 'Fish', 'Reptile', 'Horse', 'Goat', 'Sheep', 'Cattle', 'Poultry', 'Other')),
   breed TEXT,
@@ -635,6 +663,66 @@ CREATE TABLE IF NOT EXISTS vet_services (
   species TEXT NOT NULL,
   price NUMERIC(12,2) NOT NULL DEFAULT 0,
   is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================================
+-- 27. NARCOTIC LOGS (Controlled Substance Custody Ledger)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS narcotic_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  inventory_id UUID REFERENCES inventory(id) ON DELETE SET NULL,
+  product_id UUID REFERENCES products(id) ON DELETE SET NULL,
+  product_name TEXT NOT NULL,
+  patient_id UUID REFERENCES patients(id) ON DELETE SET NULL,
+  patient_name TEXT,
+  client_name TEXT,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  batch_number TEXT,
+  dispensed_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  dispenser_name TEXT NOT NULL,
+  witness_name TEXT,
+  purpose TEXT NOT NULL,
+  notes TEXT,
+  location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+  dispensed_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================================
+-- 28. ANNOUNCEMENTS (Broadcast Communications)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS announcements (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('normal', 'high', 'urgent')),
+  scope TEXT NOT NULL DEFAULT 'all' CHECK (scope IN ('all', 'hq', 'clinic', 'warehouse')),
+  location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  author_name TEXT NOT NULL,
+  active BOOLEAN DEFAULT true,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================================
+-- 29. STAFF REQUESTS (Workforce Requests & Approvals)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS staff_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  user_name TEXT NOT NULL,
+  user_role TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('leave', 'transfer', 'restock', 'return', 'inquiry')),
+  title TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+  reviewed_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  reviewer_name TEXT,
+  review_notes TEXT,
+  reviewed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -1194,6 +1282,36 @@ CREATE POLICY "vet_services_manage" ON vet_services FOR ALL USING (
   get_user_role() IN ('super_admin', 'ceo', 'clinic_admin')
 );
 
+-- ─── NARCOTIC LOGS ───
+ALTER TABLE narcotic_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "narcotic_logs_select" ON narcotic_logs FOR SELECT USING (
+  get_user_role() IN ('super_admin', 'ceo', 'vet', 'pharmacist', 'clinic_admin')
+);
+CREATE POLICY "narcotic_logs_insert" ON narcotic_logs FOR INSERT WITH CHECK (
+  get_user_role() IN ('super_admin', 'ceo', 'vet', 'pharmacist', 'clinic_admin')
+);
+
+-- ─── ANNOUNCEMENTS ───
+ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "announcements_select" ON announcements FOR SELECT USING (
+  active = true OR get_user_role() IN ('super_admin', 'ceo', 'clinic_admin')
+);
+CREATE POLICY "announcements_manage" ON announcements FOR ALL USING (
+  get_user_role() IN ('super_admin', 'ceo', 'clinic_admin')
+);
+
+-- ─── STAFF REQUESTS ───
+ALTER TABLE staff_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "staff_requests_select" ON staff_requests FOR SELECT USING (
+  auth.uid() = user_id OR get_user_role() IN ('super_admin', 'ceo', 'clinic_admin', 'inventory_manager', 'finance_manager')
+);
+CREATE POLICY "staff_requests_insert" ON staff_requests FOR INSERT WITH CHECK (
+  auth.uid() = user_id
+);
+CREATE POLICY "staff_requests_update" ON staff_requests FOR UPDATE USING (
+  auth.uid() = user_id OR get_user_role() IN ('super_admin', 'ceo', 'clinic_admin', 'inventory_manager', 'finance_manager')
+);
+
 
 -- ============================================================
 -- AUDIT LOG (Immutable Financial Trail)
@@ -1205,11 +1323,14 @@ CREATE POLICY "vet_services_manage" ON vet_services FOR ALL USING (
 CREATE TABLE IF NOT EXISTS audit_log (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   table_name TEXT NOT NULL,
-  record_id UUID NOT NULL,
-  action TEXT NOT NULL CHECK (action IN ('approved', 'rejected', 'reconciled', 'created', 'updated', 'deleted')),
-  actor_id UUID NOT NULL REFERENCES profiles(id),
-  actor_role TEXT NOT NULL,
+  record_id UUID,
+  action TEXT NOT NULL,
+  old_data JSONB,
+  new_data JSONB,
+  actor_id UUID REFERENCES profiles(id),
+  actor_role TEXT,
   details JSONB,
+  performed_by UUID REFERENCES profiles(id),
   ip_address TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );

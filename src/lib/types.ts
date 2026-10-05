@@ -301,7 +301,8 @@ export type InvoiceStatus =
   | 'sent'
   | 'paid'
   | 'partial'
-  | 'overdue';
+  | 'overdue'
+  | 'cancelled';
 
 /**
  * A single line item within an invoice.
@@ -752,6 +753,51 @@ export type QueueStatus = 'waiting' | 'in_progress' | 'in_consultation' | 'compl
 
 export type QueuePriority = 'normal' | 'urgent' | 'emergency';
 
+export type PreferredContactMethod = 'Phone' | 'WhatsApp' | 'Email' | 'SMS';
+
+export interface ClinicClient {
+  id: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  phone: string;
+  alternate_phone?: string | null;
+  email?: string | null;
+  address: string;
+  city?: string | null;
+  state?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relation?: string | null;
+  preferred_contact?: PreferredContactMethod;
+  referral_source?: string | null;
+  notes?: string | null;
+  location_id?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  patients?: PatientRef[];
+  patient_count?: number;
+}
+
+export interface AddClinicClientInput {
+  first_name: string;
+  last_name: string;
+  email?: string | null;
+  phone: string;
+  alternate_phone?: string | null;
+  address: string;
+  city?: string | null;
+  state?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relation?: string | null;
+  preferred_contact?: PreferredContactMethod;
+  referral_source?: string | null;
+  notes?: string | null;
+  location_id?: string | null;
+}
+
 export interface Patient {
   id: string;
   owner_id: string;
@@ -892,6 +938,8 @@ export interface ClinicOwner {
   full_name: string | null;
   name?: string | null;
   phone?: string | null;
+  email?: string | null;
+  address?: string | null;
 }
 
 /** Minimal `patients` projection returned by the `patient:patient_id(...)` join. */
@@ -1245,6 +1293,7 @@ export interface StaffRequest {
     quantity?: number;
     urgency?: 'low' | 'normal' | 'urgent';
     return_condition?: 'excess' | 'damaged' | 'near_expiry';
+    items?: { item_name: string; quantity: number }[];
     // General / Reason
     reason: string;
     notes?: string;
@@ -1273,6 +1322,40 @@ export interface Announcement {
   author_role: UserRole;
   priority: AnnouncementPriority;
   created_at: string;
+}
+
+/* ── Controlled Substance & Pharmacy POS ── */
+export interface NarcoticLog {
+  id: string;
+  item_id: string;
+  product_name: string;
+  patient_id?: string | null;
+  patient_name?: string | null;
+  quantity: number;
+  unit?: string;
+  authorized_by: string;
+  authorizer_name: string;
+  witness_name?: string | null;
+  notes?: string | null;
+  location_id?: string | null;
+  created_at: string;
+}
+
+export interface DispensePrescriptionInput {
+  patient_id?: string | null;
+  patient_name?: string;
+  items: Array<{
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    is_controlled?: boolean;
+  }>;
+  payment_method: 'cash' | 'pos_card' | 'bank_transfer';
+  pin?: string;
+  location_id?: string | null;
+  user_id: string;
+  authorizer_name: string;
 }
 
 

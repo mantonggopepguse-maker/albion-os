@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Topbar from '@/components/layout/Topbar';
 import {
   useLocations,
+  useClinicClients,
   useClinicPatients,
   useClinicTreatments,
   useInventory,
@@ -104,6 +105,7 @@ function BranchCard({
 
 export default function ClinicPage() {
   const { locations } = useLocations();
+  const { clients } = useClinicClients();
   const { patients } = useClinicPatients();
   const { treatments } = useClinicTreatments();
   const { inventory } = useInventory();
@@ -172,6 +174,43 @@ export default function ClinicPage() {
           <StatCard label="Practice Revenue" value={fmtNgn(totalClinicRevenue)} icon="💰" color="rgba(168, 85, 247, 0.15)" />
           <StatCard label="Operating Overheads" value={fmtNgn(totalClinicExpenses)} icon="📊" color="var(--color-warning-light)" />
           <StatCard label="Net Operating Margin" value={fmtNgn(totalClinicNetMargin)} icon="📈" color="var(--color-success-light)" />
+        </div>
+
+        {/* ── Quick Access Clinical Hub Navigation ── */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 'var(--space-4)',
+          marginBottom: 'var(--space-8)',
+        }}>
+          <Link href="/clinic/clients" prefetch={true} className={styles.statCard} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '14px', padding: '16px' }}>
+            <span style={{ fontSize: '28px' }}>👥</span>
+            <div>
+              <div style={{ fontWeight: 700, color: 'var(--color-navy)', fontSize: '15px' }}>Pet Owners & Clients</div>
+              <div style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{clients.length} Registered Accounts</div>
+            </div>
+          </Link>
+          <Link href="/clinic/patients" prefetch={true} className={styles.statCard} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '14px', padding: '16px' }}>
+            <span style={{ fontSize: '28px' }}>🐾</span>
+            <div>
+              <div style={{ fontWeight: 700, color: 'var(--color-navy)', fontSize: '15px' }}>Patients & Medical Records</div>
+              <div style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{patients.length} Registered Animals</div>
+            </div>
+          </Link>
+          <Link href="/clinic/appointments" prefetch={true} className={styles.statCard} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '14px', padding: '16px' }}>
+            <span style={{ fontSize: '28px' }}>📅</span>
+            <div>
+              <div style={{ fontWeight: 700, color: 'var(--color-navy)', fontSize: '15px' }}>Appointments & Booking</div>
+              <div style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>Consultation Queue</div>
+            </div>
+          </Link>
+          <Link href="/clinic/treatments" prefetch={true} className={styles.statCard} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '14px', padding: '16px' }}>
+            <span style={{ fontSize: '28px' }}>🩺</span>
+            <div>
+              <div style={{ fontWeight: 700, color: 'var(--color-navy)', fontSize: '15px' }}>Treatments & EHR</div>
+              <div style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{treatments.length} Active Records</div>
+            </div>
+          </Link>
         </div>
 
         <div className={styles.section}>

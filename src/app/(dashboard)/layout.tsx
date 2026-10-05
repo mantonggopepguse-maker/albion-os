@@ -43,6 +43,7 @@ import { NotificationsProvider } from '@/lib/notifications-context';
 import Sidebar from '@/components/layout/Sidebar';
 import MobileNavbar from '@/components/layout/MobileNavbar';
 import MobileSidebarDrawer from '@/components/layout/MobileSidebarDrawer';
+import { TopProgressBar } from '@/components/ui/TopProgressBar';
 import styles from './dashboard-layout.module.css';
 
 /* ────────────────────────────────────────────
@@ -109,6 +110,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
      fixed sidebar on desktop, scrollable main on the right. */
   return (
     <div className={styles.layout}>
+      <TopProgressBar />
       <MobileNavbar
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={handleToggleSidebar}

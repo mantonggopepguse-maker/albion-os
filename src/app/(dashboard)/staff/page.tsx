@@ -295,17 +295,30 @@ export default function StaffPage() {
                     style={{ animationDelay: `${index * 0.06}s` }}
                   >
                     <td>
-                      <Link href={`/staff/${user.id}`} className={styles.nameCell}>
-                        <div className={styles.avatar}>
-                          {user.full_name
-                            .split(' ')
-                            .map((n) => n[0])
-                            .join('')
-                            .slice(0, 2)
-                            .toUpperCase()}
-                        </div>
-                        <span className={styles.nameText}>{user.full_name}</span>
-                      </Link>
+                      <div className={styles.nameContainer}>
+                        <Link href={`/staff/${user.id}`} className={styles.nameCell}>
+                          <div className={styles.avatar}>
+                            {user.full_name
+                              .split(' ')
+                              .map((n) => n[0])
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </div>
+                          <span className={styles.nameText}>{user.full_name}</span>
+                        </Link>
+                        {currentUser?.id !== user.id && (
+                          <Link
+                            href={`/chat?userId=${user.id}&user=${encodeURIComponent(user.full_name)}`}
+                            prefetch={true}
+                            className={styles.quickChatBtn}
+                            title={`Chat with ${user.full_name}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            💬
+                          </Link>
+                        )}
+                      </div>
                     </td>
 
                     <td>
@@ -352,6 +365,17 @@ export default function StaffPage() {
                     <td>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button className={styles.editBtn} onClick={() => openEdit(user)}>Edit</button>
+                        {currentUser?.id !== user.id && (
+                          <Link
+                            href={`/chat?userId=${user.id}`}
+                            prefetch={true}
+                            className={styles.editBtn}
+                            style={{ textDecoration: 'none', color: 'var(--color-ocean)' }}
+                            title="Chat with staff"
+                          >
+                            💬 Chat
+                          </Link>
+                        )}
                         {isCeo && user.is_active !== false && (
                           <button
                             className={styles.editBtn}

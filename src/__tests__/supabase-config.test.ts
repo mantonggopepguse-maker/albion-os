@@ -29,13 +29,17 @@ describe('Supabase runtime configuration', () => {
     });
   });
 
-  it('identifies unresolvable or expired Supabase project domains', () => {
+  it('accepts valid live project domain and rejects placeholders', () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://knabfxzouliunawxirdh.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'sb_publishable_key');
+    expect(isSupabaseConfigured()).toBe(true);
+
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://placeholder.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'some-key');
     expect(isSupabaseConfigured()).toBe(false);
 
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://valid-project.supabase.co');
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'some-key');
-    expect(isSupabaseConfigured()).toBe(true);
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://knabfxzouliunawxirdh.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'placeholder_key');
+    expect(isSupabaseConfigured()).toBe(false);
   });
 });
